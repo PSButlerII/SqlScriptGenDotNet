@@ -18,6 +18,7 @@ public static partial class SqlDefinitionValidator
         errors.AddRange(ValidateIdentifier(table.Name, "name").Errors);
         if (table.Schema is not null) errors.AddRange(ValidateIdentifier(table.Schema, "schema").Errors);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var renderedColumns = new HashSet<string>(StringComparer.Ordinal);
         var catalog = SqlTypeCatalogs.For(dialect);
         if (table.Columns is null) errors.Add(new("columns", "Columns are required."));
         else if (table.Columns.Count == 0) errors.Add(new("columns", "At least one column is required."));
@@ -27,6 +28,7 @@ public static partial class SqlDefinitionValidator
             if (c is null) { errors.Add(new(path, "Column cannot be null.")); continue; }
             errors.AddRange(ValidateIdentifier(c.Name, path + ".name").Errors);
             if (c.Name is not null && !seen.Add(c.Name)) errors.Add(new(path + ".name", $"Duplicate column '{c.Name}'."));
+            if (c.Name is not null) renderedColumns.Add(c.Name);
             if (c.Type is null) errors.Add(new(path + ".type", "Column type is required."));
             else if (string.IsNullOrWhiteSpace(c.Type.Name)) errors.Add(new(path + ".type.name", "Type name is required."));
             else if (!catalog.TryGetValue(c.Type.Name, out var descriptor)) errors.Add(new(path + ".type.name", $"Type '{c.Type.Name}' is not supported by {dialect}."));
@@ -48,7 +50,7 @@ public static partial class SqlDefinitionValidator
             if (constraint is null) { errors.Add(new(path, "Constraint cannot be null.")); continue; }
             errors.AddRange(ValidateIdentifier(constraint.Name, path + ".name").Errors);
             var local = constraint switch { PrimaryKeyConstraint x => x.Columns, UniqueConstraint x => x.Columns, ForeignKeyConstraint x => x.Columns, _ => null };
-            ValidateConstraintColumns(local, path + ".columns", seen, errors, constraint is CheckConstraint);
+            ValidateConstraintColumns(local, path + ".columns", renderedColumns, errors, constraint is CheckConstraint);
             if (constraint is CheckConstraint check)
             {
                 if (check.Expression is null) errors.Add(new(path + ".expression", "Check expression is required."));

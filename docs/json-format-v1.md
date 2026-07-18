@@ -34,6 +34,8 @@ When a foreign-key target table is declared in the same document, every referenc
 
 `referencedSchema` alone controls foreign-key qualification. A source table's `schema` is never inherited by its foreign keys: omitting `referencedSchema` preserves an unqualified SQL reference, and internal matching and ordering use that same unqualified identity. Specify `referencedSchema` explicitly to guarantee a same-schema target. An explicit `dependsOn` can supply ordering independently, but it does not alter the rendered foreign-key reference.
 
+SqlScriptGen emits quoted identifiers, so internal foreign-key table, schema, and column matching uses exact identifier spelling. `Parent` and `parent`, or `ID` and `id`, are not interchangeable for internal validation. A differently cased table name remains an external reference, and SqlScriptGen never rewrites identifier casing. JSON property-name matching remains case-insensitive and is separate from SQL identifier values.
+
 Foreign-key `onDelete` and `onUpdate` values are optional and may be null. Non-null values must be one of the documented strings `noAction`, `restrict`, `cascade`, `setNull`, or `setDefault`; numeric enum values and other JSON token kinds are invalid.
 
 Dependencies are ordered with a stable topological sort: prerequisites precede dependents, while declaration order breaks ties between otherwise available objects. Missing explicit dependencies, self-dependencies, and cycles are validation errors. Input collections are never mutated.

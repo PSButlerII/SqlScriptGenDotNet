@@ -119,7 +119,7 @@ public static class SqlDefinitionDocumentValidator
 
     private static void ValidateInternalForeignKeys(IReadOnlyList<IDatabaseObject> objects, IReadOnlyList<DatabaseObjectIdentity?> objectIdentities, IReadOnlySet<DatabaseObjectIdentity> duplicateIdentities, List<ValidationError> errors)
     {
-        var internalTables = new Dictionary<DatabaseObjectIdentity, TableDefinition>();
+        var internalTables = new Dictionary<DatabaseObjectIdentity, TableDefinition>(RenderedDatabaseObjectIdentityComparer.Instance);
         for (var i = 0; i < objects.Count; i++)
         {
             if (objects[i] is not TableDefinition table || objectIdentities[i] is not { } identity || duplicateIdentities.Contains(identity) || table.Columns is null || table.Columns.Any(column => column?.Name is null)) continue;
@@ -134,7 +134,7 @@ public static class SqlDefinitionDocumentValidator
                 if (source.Constraints[constraintIndex] is not ForeignKeyConstraint foreignKey || foreignKey.ReferencedTable is null || foreignKey.ReferencedColumns is null) continue;
                 var targetIdentity = ForeignKeyTargetIdentity.Resolve(foreignKey);
                 if (!internalTables.TryGetValue(targetIdentity, out var target)) continue;
-                var targetColumns = new HashSet<string>(target.Columns.Select(column => column.Name), StringComparer.OrdinalIgnoreCase);
+                var targetColumns = new HashSet<string>(target.Columns.Select(column => column.Name), StringComparer.Ordinal);
                 for (var columnIndex = 0; columnIndex < foreignKey.ReferencedColumns.Count; columnIndex++)
                 {
                     var referencedColumn = foreignKey.ReferencedColumns[columnIndex];
@@ -149,6 +149,24 @@ public static class SqlDefinitionDocumentValidator
 internal static class ForeignKeyTargetIdentity
 {
     public static DatabaseObjectIdentity Resolve(ForeignKeyConstraint foreignKey) => new(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema);
+}
+
+internal sealed class RenderedDatabaseObjectIdentityComparer : IEqualityComparer<DatabaseObjectIdentity>
+{
+    public static RenderedDatabaseObjectIdentityComparer Instance { get; } = new();
+
+    public bool Equals(DatabaseObjectIdentity? left, DatabaseObjectIdentity? right) =>
+        ReferenceEquals(left, right) ||
+        left is not null &&
+        right is not null &&
+        left.Kind == right.Kind &&
+        StringComparer.Ordinal.Equals(left.Name, right.Name) &&
+        StringComparer.Ordinal.Equals(left.Schema, right.Schema);
+
+    public int GetHashCode(DatabaseObjectIdentity value) => HashCode.Combine(
+        value.Kind,
+        StringComparer.Ordinal.GetHashCode(value.Name ?? string.Empty),
+        value.Schema is null ? 0 : StringComparer.Ordinal.GetHashCode(value.Schema));
 }
 
 public static class DatabaseObjectOrderer
@@ -170,6 +188,10 @@ internal sealed class DatabaseObjectDependencyGraph
     public static DatabaseObjectDependencyGraph Create(IReadOnlyList<IDatabaseObject> objects, IReadOnlyDictionary<DatabaseObjectIdentity, int> identities)
     {
         var prerequisites = Enumerable.Range(0, objects.Count).Select(_ => new HashSet<int>()).ToArray();
+        var renderedTableIndexes = new Dictionary<DatabaseObjectIdentity, int>(RenderedDatabaseObjectIdentityComparer.Instance);
+        for (var i = 0; i < objects.Count; i++)
+            if (objects[i] is TableDefinition table) renderedTableIndexes.TryAdd(table.Identity, i);
+
         for (var i = 0; i < objects.Count; i++)
         {
             foreach (var dependency in objects[i].DependsOn ?? [])
@@ -179,7 +201,7 @@ internal sealed class DatabaseObjectDependencyGraph
             foreach (var foreignKey in (table.Constraints ?? []).OfType<ForeignKeyConstraint>())
             {
                 var targetIdentity = ForeignKeyTargetIdentity.Resolve(foreignKey);
-                if (identities.TryGetValue(targetIdentity, out var target) && target != i) prerequisites[i].Add(target);
+                if (renderedTableIndexes.TryGetValue(targetIdentity, out var target) && target != i) prerequisites[i].Add(target);
             }
         }
         return new(prerequisites);

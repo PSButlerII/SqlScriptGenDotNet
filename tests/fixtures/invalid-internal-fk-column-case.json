@@ -1,0 +1,1 @@
+{"formatVersion":1,"objects":[{"kind":"table","name":"Parent","columns":[{"name":"ID","type":{"name":"int"}}]},{"kind":"table","name":"child","columns":[{"name":"ParentID","type":{"name":"int"}}],"constraints":[{"kind":"foreignKey","name":"fk_child_parent","columns":["ParentID"],"referencedTable":"Parent","referencedColumns":["id"]}]}]}
