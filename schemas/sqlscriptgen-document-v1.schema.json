@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/PSButlerII/SqlScriptGenDotNet/schemas/sqlscriptgen-document-v1.schema.json",
+  "title": "SqlScriptGen document format version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "objects"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "oneOf": [{ "$ref": "#/$defs/table" }, { "$ref": "#/$defs/database" }] }
+    }
+  },
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "enum": ["table", "database"] },
+        "name": { "type": "string", "minLength": 1 },
+        "schema": { "type": ["string", "null"] }
+      }
+    },
+    "dataType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "length": { "type": ["integer", "null"] },
+        "precision": { "type": ["integer", "null"] },
+        "scale": { "type": ["integer", "null"] }
+      }
+    },
+    "expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": { "value": { "type": "string" } }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/dataType" },
+        "nullable": { "type": "boolean", "default": true },
+        "default": { "oneOf": [{ "$ref": "#/$defs/expression" }, { "type": "null" }] },
+        "identity": { "type": "boolean", "default": false }
+      }
+    },
+    "primaryKey": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name", "columns"],
+      "properties": { "kind": { "const": "primaryKey" }, "name": { "type": "string" }, "columns": { "type": "array", "minItems": 1, "items": { "type": "string" } } }
+    },
+    "unique": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name", "columns"],
+      "properties": { "kind": { "const": "unique" }, "name": { "type": "string" }, "columns": { "type": "array", "minItems": 1, "items": { "type": "string" } } }
+    },
+    "check": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name", "expression"],
+      "properties": { "kind": { "const": "check" }, "name": { "type": "string" }, "expression": { "$ref": "#/$defs/expression" } }
+    },
+    "foreignKey": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "name", "columns", "referencedTable", "referencedColumns"],
+      "properties": {
+        "kind": { "const": "foreignKey" }, "name": { "type": "string" },
+        "columns": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "referencedTable": { "type": "string" },
+        "referencedColumns": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "referencedSchema": { "type": ["string", "null"] },
+        "onDelete": { "type": ["string", "null"], "enum": ["noAction", "restrict", "cascade", "setNull", "setDefault", null] },
+        "onUpdate": { "type": ["string", "null"], "enum": ["noAction", "restrict", "cascade", "setNull", "setDefault", null] }
+      }
+    },
+    "constraint": { "oneOf": [{ "$ref": "#/$defs/primaryKey" }, { "$ref": "#/$defs/unique" }, { "$ref": "#/$defs/check" }, { "$ref": "#/$defs/foreignKey" }] },
+    "table": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name", "columns"],
+      "properties": {
+        "kind": { "const": "table" }, "name": { "type": "string", "minLength": 1 },
+        "schema": { "type": ["string", "null"] },
+        "columns": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/column" } },
+        "constraints": { "type": ["array", "null"], "items": { "$ref": "#/$defs/constraint" } },
+        "dependsOn": { "type": "array", "items": { "$ref": "#/$defs/identity" } }
+      }
+    },
+    "database": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name"],
+      "properties": {
+        "kind": { "const": "database" }, "name": { "type": "string", "minLength": 1 },
+        "dependsOn": { "type": "array", "items": { "$ref": "#/$defs/identity" } }
+      }
+    }
+  }
+}
