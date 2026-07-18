@@ -47,21 +47,21 @@ public interface IDatabaseObject
 {
     [JsonIgnore] DatabaseObjectKind ObjectKind { get; }
     [JsonIgnore] DatabaseObjectIdentity Identity { get; }
-    IReadOnlyList<DatabaseObjectIdentity> DependsOn { get; }
+    IReadOnlyList<DatabaseObjectIdentity>? DependsOn { get; }
 }
 
 public sealed record TableDefinition(string Name, IReadOnlyList<ColumnDefinition> Columns, IReadOnlyList<TableConstraint>? Constraints = null, string? Schema = null) : IDatabaseObject
 {
     [JsonIgnore] public DatabaseObjectKind ObjectKind => DatabaseObjectKind.Table;
     [JsonIgnore] public DatabaseObjectIdentity Identity => new(ObjectKind, Name, Schema);
-    public IReadOnlyList<DatabaseObjectIdentity> DependsOn { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<DatabaseObjectIdentity>? DependsOn { get; init; }
 }
 
 public sealed record DatabaseDefinition(string Name) : IDatabaseObject
 {
     [JsonIgnore] public DatabaseObjectKind ObjectKind => DatabaseObjectKind.Database;
     [JsonIgnore] public DatabaseObjectIdentity Identity => new(ObjectKind, Name);
-    public IReadOnlyList<DatabaseObjectIdentity> DependsOn { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<DatabaseObjectIdentity>? DependsOn { get; init; }
 }
 
 public sealed record SqlDefinitionDocument(int FormatVersion, IReadOnlyList<IDatabaseObject> Objects)
