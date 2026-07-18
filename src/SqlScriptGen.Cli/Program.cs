@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using SqlScriptGen.Core;
 
@@ -8,7 +9,7 @@ public static class CliApplication
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
         if (args.Length == 0 || args[0] is "--help" or "-h" or "help") { await output.WriteLineAsync(Help); return 0; }
-        if (args[0] is "--version" or "-v") { await output.WriteLineAsync("sqlscriptgen 1.0.0"); return 0; }
+        if (args[0] is "--version" or "-v") { await output.WriteLineAsync($"sqlscriptgen {Version}"); return 0; }
         try
         {
             return args[0].ToLowerInvariant() switch
@@ -77,4 +78,8 @@ Usage:
   sqlscriptgen list-types --dialect <postgresql|mysql>
   sqlscriptgen --help | --version
 """;
+
+    private static string Version => typeof(CliApplication).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        .Split('+', 2)[0] ?? "unknown";
 }

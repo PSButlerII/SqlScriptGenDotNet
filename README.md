@@ -23,6 +23,10 @@ dotnet build --configuration Release
 dotnet test --configuration Release
 ```
 
+## Install a release
+
+Download the `win-x64.zip` or `linux-x64.tar.gz` asset from [GitHub Releases](https://github.com/PSButlerII/SqlScriptGenDotNet/releases), verify it with `SHA256SUMS.txt`, extract it, and run `sqlscriptgen --help`. The executables are self-contained and do not require a .NET installation.
+
 ## CLI
 
 ```text
@@ -55,6 +59,8 @@ Framework-dependent: `dotnet publish src/SqlScriptGen.Cli -c Release`. Self-cont
 dotnet publish .\src\SqlScriptGen.Cli\SqlScriptGen.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 dotnet publish ./src/SqlScriptGen.Cli/SqlScriptGen.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
 ```
+
+Maintainers can create both archives and checksums with `./scripts/Build-Release.ps1 -Version 1.0.0` after validation. See [development](docs/development.md) for the complete tagging and release process.
 
 ## Architecture and safety
 
