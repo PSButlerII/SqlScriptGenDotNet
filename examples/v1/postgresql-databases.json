@@ -1,0 +1,7 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    { "kind": "database", "name": "application" },
+    { "kind": "database", "name": "analytics" }
+  ]
+}
