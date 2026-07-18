@@ -137,7 +137,7 @@ internal sealed class DatabaseObjectDependencyGraph
             foreach (var foreignKey in (table.Constraints ?? []).OfType<ForeignKeyConstraint>())
             {
                 var targetIdentity = new DatabaseObjectIdentity(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema ?? table.Schema);
-                if (identities.TryGetValue(targetIdentity, out var target)) prerequisites[i].Add(target);
+                if (identities.TryGetValue(targetIdentity, out var target) && target != i) prerequisites[i].Add(target);
             }
         }
         return new(prerequisites);
