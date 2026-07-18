@@ -1,0 +1,12 @@
+{
+  "name": "customers",
+  "columns": [
+    { "name": "id", "type": { "name": "bigint" }, "nullable": false, "identity": true },
+    { "name": "email", "type": { "name": "varchar", "length": 255 }, "nullable": false },
+    { "name": "balance", "type": { "name": "decimal", "precision": 12, "scale": 2 }, "nullable": false, "default": { "value": "0" } }
+  ],
+  "constraints": [
+    { "kind": "primaryKey", "name": "pk_customers", "columns": ["id"] },
+    { "kind": "unique", "name": "uq_customers_email", "columns": ["email"] }
+  ]
+}

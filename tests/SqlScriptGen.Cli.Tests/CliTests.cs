@@ -1,0 +1,18 @@
+using SqlScriptGen.Core;
+
+namespace SqlScriptGen.Cli.Tests;
+
+public sealed class CliTests
+{
+    [Fact] public async Task GenerateFile_Succeeds() { using var f = Temp("{\"name\":\"t\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"); var r = await Run("generate", "--dialect", "mysql", "--input", f.Path); Assert.Equal(0, r.Code); Assert.Contains("CREATE TABLE `t`", r.Out); }
+    [Fact] public async Task InvalidArguments_Fail() { var r = await Run("generate"); Assert.Equal(1, r.Code); }
+    [Fact] public async Task UnknownCommand_Fails() { var r = await Run("wat"); Assert.Equal(1, r.Code); }
+    [Fact] public async Task MissingFile_Fails() { var r = await Run("generate", "--dialect", "mysql", "--input", Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json")); Assert.Equal(4, r.Code); }
+    [Fact] public async Task InvalidJson_Fails() { using var f = Temp("{"); var r = await Run("generate", "--dialect", "mysql", "--input", f.Path); Assert.Equal(3, r.Code); }
+    [Fact] public async Task OutputFile_IsCreated() { using var f = Temp("{\"name\":\"t\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"); var output = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".sql"); try { var r = await Run("generate", "--dialect", "mysql", "--input", f.Path, "--output", output); Assert.Equal(0, r.Code); Assert.Contains("CREATE TABLE", await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken)); } finally { File.Delete(output); } }
+    [Fact] public async Task ValidationFailure_IsNonzero() { using var f = Temp("{\"name\":\"t\",\"columns\":[]}"); var r = await Run("generate", "--dialect", "mysql", "--input", f.Path); Assert.Equal(2, r.Code); }
+    [Fact] public async Task Version_Succeeds() { var r = await Run("--version"); Assert.Equal(0, r.Code); Assert.Contains("1.0.0", r.Out); }
+    private static async Task<(int Code, string Out, string Error)> Run(params string[] args) { using var o = new StringWriter(); using var e = new StringWriter(); var code = await CliApplication.RunAsync(args, new StringReader(""), o, e, TestContext.Current.CancellationToken); return (code, o.ToString(), e.ToString()); }
+    private static TempFile Temp(string content) => new(content);
+    private sealed class TempFile : IDisposable { public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid() + ".json"); public TempFile(string content) => File.WriteAllText(Path, content); public void Dispose() => File.Delete(Path); }
+}

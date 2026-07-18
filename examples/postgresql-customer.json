@@ -1,0 +1,13 @@
+{
+  "name": "customers",
+  "schema": "public",
+  "columns": [
+    { "name": "id", "type": { "name": "bigint" }, "nullable": false, "identity": true },
+    { "name": "email", "type": { "name": "varchar", "length": 255 }, "nullable": false },
+    { "name": "display_name", "type": { "name": "varchar", "length": 100 } }
+  ],
+  "constraints": [
+    { "kind": "primaryKey", "name": "pk_customers", "columns": ["id"] },
+    { "kind": "unique", "name": "uq_customers_email", "columns": ["email"] }
+  ]
+}
