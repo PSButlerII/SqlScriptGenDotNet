@@ -8,6 +8,10 @@ public sealed class DocumentSerializationTests
     [Fact] public void LegacySerialization_ExcludesDependenciesThroughHelperAndOptionsWithoutMutation() { var plain = Table("child"); var table = plain with { DependsOn = [new(DatabaseObjectKind.Table, "parent")] }; var expected = DefinitionJson.Serialize(plain); Assert.Equal(expected, DefinitionJson.Serialize(table)); Assert.Equal(expected, JsonSerializer.Serialize(table, DefinitionJson.Options)); Assert.DoesNotContain("dependsOn", expected, StringComparison.OrdinalIgnoreCase); Assert.Single(table.DependsOn!); }
     [Fact] public void LegacyInput_WithDependenciesIsRejected() { const string json = "{\"name\":\"child\",\"dependsOn\":[{\"kind\":\"table\",\"name\":\"parent\"}],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"; Assert.Throws<JsonException>(() => DefinitionJson.Deserialize(json)); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); }
     [Fact] public void CanonicalDependencyKinds_AreExactAndRoundTripDeterministically() { var parent = Table("parent"); var child = Table("child") with { DependsOn = [new(DatabaseObjectKind.Table, "parent"), new(DatabaseObjectKind.Table, "parent", "public")] }; var application = new DatabaseDefinition("application"); var reporting = new DatabaseDefinition("reporting") with { DependsOn = [new(DatabaseObjectKind.Database, "application")] }; var document = Document(parent, child, application, reporting); var json = SqlDefinitionDocumentJson.Serialize(document); using var parsed = JsonDocument.Parse(json); var tableDependencies = parsed.RootElement.GetProperty("objects")[1].GetProperty("dependsOn"); Assert.Equal("table", tableDependencies[0].GetProperty("kind").GetString()); Assert.Equal("table", tableDependencies[1].GetProperty("kind").GetString()); Assert.Equal("public", tableDependencies[1].GetProperty("schema").GetString()); Assert.Equal("database", parsed.RootElement.GetProperty("objects")[3].GetProperty("dependsOn")[0].GetProperty("kind").GetString()); var roundTrip = SqlDefinitionDocumentJson.Read(json); Assert.Equal(DatabaseObjectKind.Database, Assert.Single(roundTrip.Objects[3].DependsOn!).Kind); Assert.Equal(json, SqlDefinitionDocumentJson.Serialize(roundTrip)); }
+    [Theory, InlineData("table", DatabaseObjectKind.Table), InlineData("database", DatabaseObjectKind.Database)]
+    public void DirectCanonicalOptions_AcceptExactDependencyKinds(string token, DatabaseObjectKind expected) { var document = JsonSerializer.Deserialize<SqlDefinitionDocument>(DependencyDocument($"{{\"kind\":\"{token}\",\"name\":\"parent\"}}"), SqlDefinitionDocumentJson.Options)!; Assert.Equal(expected, Assert.Single(document.Objects[1].DependsOn!).Kind); }
+    [Theory, MemberData(nameof(InvalidCanonicalDependencyKinds))]
+    public void CanonicalDependencyKindContract_IsEnforcedByBothApis(string token) { var json = DependencyDocument($"{{\"kind\":{token},\"name\":\"parent\"}}"); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(json, SqlDefinitionDocumentJson.Options)); }
     [Fact] public void CanonicalEnumWireValues_ConformToSchema() { var foreignKey = new ForeignKeyConstraint("fk", ["parent_id"], "parent", ["id"], OnDelete: ReferentialAction.Cascade, OnUpdate: ReferentialAction.SetNull); var child = new TableDefinition("child", [new("parent_id", new("int"))], [new PrimaryKeyConstraint("pk_child", ["parent_id"]), foreignKey]) with { DependsOn = [new(DatabaseObjectKind.Table, "parent")] }; using var parsed = JsonDocument.Parse(SqlDefinitionDocumentJson.Serialize(Document(Table("parent"), child))); var childJson = parsed.RootElement.GetProperty("objects")[1]; Assert.Equal("table", childJson.GetProperty("kind").GetString()); Assert.Equal("table", childJson.GetProperty("dependsOn")[0].GetProperty("kind").GetString()); Assert.Equal("primaryKey", childJson.GetProperty("constraints")[0].GetProperty("kind").GetString()); Assert.Equal("foreignKey", childJson.GetProperty("constraints")[1].GetProperty("kind").GetString()); Assert.Equal("cascade", childJson.GetProperty("constraints")[1].GetProperty("onDelete").GetString()); Assert.Equal("setNull", childJson.GetProperty("constraints")[1].GetProperty("onUpdate").GetString()); }
     [Fact] public void LegacyReferentialActionWireValues_RemainVersionOneCompatible() { var table = new TableDefinition("child", [new("id", new("int"))], [new ForeignKeyConstraint("fk", ["id"], "parent", ["id"], OnDelete: ReferentialAction.Cascade, OnUpdate: ReferentialAction.SetNull)]); using var parsed = JsonDocument.Parse(DefinitionJson.Serialize(table)); var foreignKey = parsed.RootElement.GetProperty("Constraints")[0]; Assert.Equal("cascade", foreignKey.GetProperty("OnDelete").GetString()); Assert.Equal("setNull", foreignKey.GetProperty("OnUpdate").GetString()); }
     [Theory, InlineData("onDelete"), InlineData("onUpdate")]
@@ -119,6 +123,27 @@ public sealed class DocumentSerializationTests
         yield return ["onDelete", "SETDEFAULT"];
         yield return ["onDelete", " cascade"];
         yield return ["onUpdate", "cascade "];
+    }
+    public static IEnumerable<object[]> InvalidCanonicalDependencyKinds()
+    {
+        yield return ["0"];
+        yield return ["1"];
+        yield return ["-1"];
+        yield return ["2"];
+        yield return ["true"];
+        yield return ["false"];
+        yield return ["null"];
+        yield return ["{}"];
+        yield return ["[]"];
+        yield return ["\"Table\""];
+        yield return ["\"TABLE\""];
+        yield return ["\"Database\""];
+        yield return ["\"DATABASE\""];
+        yield return ["\" table\""];
+        yield return ["\"table \""];
+        yield return ["\" database\""];
+        yield return ["\"database \""];
+        yield return ["\"view\""];
     }
     private const string ValidColumns = "\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]";
     private static string CanonicalTable(string members) => $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"table\",\"name\":\"customers\",{members}}}]}}";

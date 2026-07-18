@@ -213,9 +213,31 @@ public static class SqlDefinitionDocumentJson
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+        options.Converters.Add(new StrictDatabaseObjectKindJsonConverter());
         options.Converters.Add(new StrictReferentialActionJsonConverter());
-        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         return options;
+    }
+
+    private sealed class StrictDatabaseObjectKindJsonConverter : JsonConverter<DatabaseObjectKind>
+    {
+        public override DatabaseObjectKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String) throw new JsonException("A database object kind must be a string.");
+            return reader.GetString() switch
+            {
+                "table" => DatabaseObjectKind.Table,
+                "database" => DatabaseObjectKind.Database,
+                _ => throw new JsonException("The database object kind is not supported.")
+            };
+        }
+
+        public override void Write(Utf8JsonWriter writer, DatabaseObjectKind value, JsonSerializerOptions options) => writer.WriteStringValue(value switch
+        {
+            DatabaseObjectKind.Table => "table",
+            DatabaseObjectKind.Database => "database",
+            _ => throw new JsonException($"Database object kind '{value}' is not supported.")
+        });
     }
 
     private sealed class StrictReferentialActionJsonConverter : JsonConverter<ReferentialAction>
