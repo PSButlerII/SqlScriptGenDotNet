@@ -20,6 +20,8 @@ SqlScriptGen document format version 1 is independent from the application packa
 
 `formatVersion` and the nonempty ordered `objects` array are required. Version 1 supports only `table` and `database` discriminators. Unknown versions, object kinds, and properties are rejected. Canonical serialization emits the envelope, camel-case property names, indented JSON, and omits null optional values; it never emits the legacy shape.
 
+JSON object-property order is not significant. The examples place `kind` first for readability, but canonical readers accept required properties in any order.
+
 Objects may declare `dependsOn` entries with `kind`, `name`, and optional `schema`. Explicit targets must exist in the same document. Foreign keys to tables present in the document create internal ordering dependencies. A foreign key to a table absent from the document remains a valid external SQL reference. Raw default and check expressions are never parsed for dependencies.
 
 Dependencies are ordered with a stable topological sort: prerequisites precede dependents, while declaration order breaks ties between otherwise available objects. Missing explicit dependencies, self-dependencies, and cycles are validation errors. Input collections are never mutated.

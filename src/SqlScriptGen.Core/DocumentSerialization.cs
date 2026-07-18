@@ -55,6 +55,7 @@ public static class SqlDefinitionDocumentJson
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true,
+            AllowOutOfOrderMetadataProperties = true,
             RespectRequiredConstructorParameters = true,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
