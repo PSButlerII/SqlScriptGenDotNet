@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "customers",
+      "columns": null
+    }
+  ]
+}

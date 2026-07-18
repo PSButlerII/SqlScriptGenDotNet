@@ -24,6 +24,8 @@ JSON object-property order is not significant. The examples place `kind` first f
 
 Every database object and table constraint requires a `kind` discriminator. Missing discriminators are invalid JSON-format errors.
 
+Required canonical members and collection entries cannot be null. The optional `constraints` member may be omitted or set to null; other structural null violations are invalid JSON-format errors.
+
 Objects may declare `dependsOn` entries with `kind`, `name`, and optional `schema`. Explicit targets must exist in the same document. Foreign keys to tables present in the document create internal ordering dependencies. A foreign key to a table absent from the document remains a valid external SQL reference. Raw default and check expressions are never parsed for dependencies.
 
 Dependencies are ordered with a stable topological sort: prerequisites precede dependents, while declaration order breaks ties between otherwise available objects. Missing explicit dependencies, self-dependencies, and cycles are validation errors. Input collections are never mutated.

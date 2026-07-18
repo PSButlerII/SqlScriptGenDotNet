@@ -38,12 +38,13 @@ public static class SqlDefinitionDocumentValidator
             return new(errors);
         }
 
-        var kinds = document.Objects.Where(x => x is not null).Select(x => x.ObjectKind).Distinct().ToArray();
+        var kinds = document.Objects.Where(x => x is not null).Select(x => x is TableDefinition ? DatabaseObjectKind.Table : x is DatabaseDefinition ? DatabaseObjectKind.Database : x.ObjectKind).Distinct().ToArray();
         if (kinds.Contains(DatabaseObjectKind.Table) && kinds.Contains(DatabaseObjectKind.Database))
             errors.Add(new("objects", "Database and table objects cannot be mixed because they require separate connection contexts."));
 
         var capabilities = SqlDialectCapabilityCatalog.For(dialect);
         var identities = new Dictionary<DatabaseObjectIdentity, int>();
+        var objectIdentities = new DatabaseObjectIdentity?[document.Objects.Count];
         for (var i = 0; i < document.Objects.Count; i++)
         {
             var current = document.Objects[i];
@@ -53,29 +54,31 @@ public static class SqlDefinitionDocumentValidator
                 errors.Add(new(prefix, "Database object cannot be null."));
                 continue;
             }
-            if (!capabilities.SupportedObjectKinds.Contains(current.ObjectKind))
-                errors.Add(new(prefix + ".kind", $"{dialect} does not support object kind '{current.ObjectKind}'."));
-            if (!identities.TryAdd(current.Identity, i))
-                errors.Add(new(prefix + ".name", $"Duplicate object identity '{current.Identity}'."));
-
             switch (current)
             {
                 case TableDefinition table:
                     AddPrefixed(errors, SqlDefinitionValidator.Validate(table, dialect), prefix);
+                    if (table.Name is not null) objectIdentities[i] = new(DatabaseObjectKind.Table, table.Name, table.Schema);
                     break;
                 case DatabaseDefinition database:
                     AddPrefixed(errors, SqlDefinitionValidator.ValidateIdentifier(database.Name, "name"), prefix);
+                    if (database.Name is not null) objectIdentities[i] = new(DatabaseObjectKind.Database, database.Name);
                     break;
                 default:
                     errors.Add(new(prefix + ".kind", $"Object type '{current.GetType().Name}' is not supported."));
                     break;
             }
+            if (!capabilities.SupportedObjectKinds.Contains(current.ObjectKind))
+                errors.Add(new(prefix + ".kind", $"{dialect} does not support object kind '{current.ObjectKind}'."));
+            if (objectIdentities[i] is { } identity && !identities.TryAdd(identity, i))
+                errors.Add(new(prefix + ".name", $"Duplicate object identity '{identity}'."));
         }
 
         for (var i = 0; i < document.Objects.Count; i++)
         {
             var current = document.Objects[i];
             if (current is null) continue;
+            var currentIdentity = objectIdentities[i];
             var dependencies = current.DependsOn ?? [];
             for (var j = 0; j < dependencies.Count; j++)
             {
@@ -88,12 +91,12 @@ public static class SqlDefinitionDocumentValidator
                 }
                 errors.AddRange(SqlDefinitionValidator.ValidateIdentifier(dependency.Name, path + ".name").Errors);
                 if (dependency.Schema is not null) errors.AddRange(SqlDefinitionValidator.ValidateIdentifier(dependency.Schema, path + ".schema").Errors);
-                if (dependency.Equals(current.Identity)) errors.Add(new(path, "An object cannot depend on itself."));
+                if (currentIdentity is not null && dependency.Equals(currentIdentity)) errors.Add(new(path, "An object cannot depend on itself."));
                 else if (!identities.ContainsKey(dependency)) errors.Add(new(path, $"Explicit dependency '{dependency}' does not exist in this document."));
             }
         }
 
-        if (identities.Count == document.Objects.Count)
+        if (errors.Count == 0 && identities.Count == document.Objects.Count)
         {
             var graph = DatabaseObjectDependencyGraph.Create(document.Objects, identities);
             if (graph.TryOrder(out _, out var cyclicIndexes) is false)

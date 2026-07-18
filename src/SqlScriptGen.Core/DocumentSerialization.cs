@@ -26,7 +26,7 @@ public static class SqlDefinitionDocumentJson
         if (version != SqlDefinitionDocument.CurrentFormatVersion) throw new JsonException($"formatVersion: Version {version} is unsupported; only version {SqlDefinitionDocument.CurrentFormatVersion} is supported.");
         if (!hasObjects) throw new JsonException("objects: The canonical object collection is required.");
 
-        ValidateCanonicalDiscriminators(parsed.RootElement);
+        ValidateCanonicalStructure(parsed.RootElement);
         return JsonSerializer.Deserialize<SqlDefinitionDocument>(NormalizeDiscriminatorPropertyNames(json), Options) ?? throw new JsonException("$: The document is empty.");
     }
 
@@ -50,35 +50,119 @@ public static class SqlDefinitionDocumentJson
         return false;
     }
 
-    private static void ValidateCanonicalDiscriminators(JsonElement root)
+    private static void ValidateCanonicalStructure(JsonElement root)
     {
-        if (!TryGetProperty(root, "objects", out var objects) || objects.ValueKind != JsonValueKind.Array) return;
+        var objects = RequireArray(root, "objects", "objects");
 
         var objectIndex = 0;
         foreach (var databaseObject in objects.EnumerateArray())
         {
             var objectPath = $"objects[{objectIndex}]";
-            if (databaseObject.ValueKind != JsonValueKind.Object) throw new JsonException($"{objectPath}: A JSON object is required.");
-            var kind = RequireStringDiscriminator(databaseObject, objectPath);
-            if (kind.Equals("table", StringComparison.Ordinal) && TryGetProperty(databaseObject, "constraints", out var constraints) && constraints.ValueKind == JsonValueKind.Array)
-            {
-                var constraintIndex = 0;
-                foreach (var constraint in constraints.EnumerateArray())
-                {
-                    if (constraint.ValueKind == JsonValueKind.Object) RequireStringDiscriminator(constraint, $"{objectPath}.constraints[{constraintIndex}]");
-                    constraintIndex++;
-                }
-            }
+            RequireObject(databaseObject, objectPath);
+            var kind = RequireString(databaseObject, "kind", $"{objectPath}.kind");
+            RequireString(databaseObject, "name", $"{objectPath}.name");
+            ValidateDependencies(databaseObject, objectPath);
+            if (kind.Equals("table", StringComparison.Ordinal)) ValidateTable(databaseObject, objectPath);
             objectIndex++;
         }
     }
 
-    private static string RequireStringDiscriminator(JsonElement element, string path)
+    private static void ValidateTable(JsonElement table, string path)
     {
-        if (!TryGetProperty(element, "kind", out var kind)) throw new JsonException($"{path}.kind: The required discriminator is missing.");
-        if (kind.ValueKind != JsonValueKind.String) throw new JsonException($"{path}.kind: A string discriminator is required.");
-        return kind.GetString()!;
+        var columns = RequireArray(table, "columns", $"{path}.columns");
+        var columnIndex = 0;
+        foreach (var column in columns.EnumerateArray())
+        {
+            var columnPath = $"{path}.columns[{columnIndex}]";
+            RequireObject(column, columnPath);
+            RequireString(column, "name", $"{columnPath}.name");
+            var type = RequireObjectProperty(column, "type", $"{columnPath}.type");
+            RequireString(type, "name", $"{columnPath}.type.name");
+            columnIndex++;
+        }
+
+        if (!TryGetProperty(table, "constraints", out var constraints) || constraints.ValueKind == JsonValueKind.Null) return;
+        if (constraints.ValueKind != JsonValueKind.Array) throw JsonError($"{path}.constraints", "A JSON array or null is required.");
+        var constraintIndex = 0;
+        foreach (var constraint in constraints.EnumerateArray())
+        {
+            var constraintPath = $"{path}.constraints[{constraintIndex}]";
+            RequireObject(constraint, constraintPath);
+            var kind = RequireString(constraint, "kind", $"{constraintPath}.kind");
+            RequireString(constraint, "name", $"{constraintPath}.name");
+            switch (kind)
+            {
+                case "primaryKey":
+                case "unique":
+                    ValidateStringArray(constraint, "columns", $"{constraintPath}.columns");
+                    break;
+                case "check":
+                    var expression = RequireObjectProperty(constraint, "expression", $"{constraintPath}.expression");
+                    RequireString(expression, "value", $"{constraintPath}.expression.value");
+                    break;
+                case "foreignKey":
+                    ValidateStringArray(constraint, "columns", $"{constraintPath}.columns");
+                    RequireString(constraint, "referencedTable", $"{constraintPath}.referencedTable");
+                    ValidateStringArray(constraint, "referencedColumns", $"{constraintPath}.referencedColumns");
+                    break;
+            }
+            constraintIndex++;
+        }
     }
+
+    private static void ValidateDependencies(JsonElement databaseObject, string path)
+    {
+        if (!TryGetProperty(databaseObject, "dependsOn", out var dependencies)) return;
+        if (dependencies.ValueKind != JsonValueKind.Array) throw JsonError($"{path}.dependsOn", "A non-null JSON array is required.");
+        var dependencyIndex = 0;
+        foreach (var dependency in dependencies.EnumerateArray())
+        {
+            var dependencyPath = $"{path}.dependsOn[{dependencyIndex}]";
+            RequireObject(dependency, dependencyPath);
+            RequireString(dependency, "kind", $"{dependencyPath}.kind");
+            RequireString(dependency, "name", $"{dependencyPath}.name");
+            dependencyIndex++;
+        }
+    }
+
+    private static void ValidateStringArray(JsonElement parent, string propertyName, string path)
+    {
+        var values = RequireArray(parent, propertyName, path);
+        var index = 0;
+        foreach (var value in values.EnumerateArray())
+        {
+            if (value.ValueKind != JsonValueKind.String) throw JsonError($"{path}[{index}]", "A non-null string is required.");
+            index++;
+        }
+    }
+
+    private static JsonElement RequireArray(JsonElement parent, string propertyName, string path)
+    {
+        if (!TryGetProperty(parent, propertyName, out var value)) throw JsonError(path, "The required array is missing.");
+        if (value.ValueKind != JsonValueKind.Array) throw JsonError(path, "A non-null JSON array is required.");
+        return value;
+    }
+
+    private static JsonElement RequireObjectProperty(JsonElement parent, string propertyName, string path)
+    {
+        if (!TryGetProperty(parent, propertyName, out var value)) throw JsonError(path, "The required object is missing.");
+        RequireObject(value, path);
+        return value;
+    }
+
+    private static void RequireObject(JsonElement value, string path)
+    {
+        if (value.ValueKind != JsonValueKind.Object) throw JsonError(path, "A non-null JSON object is required.");
+    }
+
+    private static string RequireString(JsonElement parent, string propertyName, string path)
+    {
+        if (!TryGetProperty(parent, propertyName, out var value)) throw JsonError(path, "The required string is missing.");
+        if (value.ValueKind != JsonValueKind.String) throw JsonError(path, "A non-null string is required.");
+        return value.GetString()!;
+    }
+
+    private static JsonException JsonError(string path, string message) => new($"{path}: {message}", path, null, null);
 
     private static string NormalizeDiscriminatorPropertyNames(string json)
     {
@@ -116,6 +200,7 @@ public static class SqlDefinitionDocumentJson
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = true,
             AllowOutOfOrderMetadataProperties = true,
+            RespectNullableAnnotations = true,
             RespectRequiredConstructorParameters = true,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull

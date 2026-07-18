@@ -5,6 +5,8 @@ namespace SqlScriptGen.Core.Tests;
 
 public sealed class DocumentSerializationTests
 {
+    [Theory, MemberData(nameof(InvalidNullStructures))] public void CanonicalNullStructure_IsJsonError(string json, string path) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Contains(path, ex.Message); }
+    [Fact] public void OptionalNullMembers_RemainAccepted() { const string json = "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"schema\":null,\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"},\"default\":null}],\"constraints\":null,\"dependsOn\":[]}]}"; var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(json).Objects)); Assert.Null(table.Constraints); Assert.Null(table.Schema); }
     [Fact] public void TableKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"kind\":\"table\"}]}").Objects)); Assert.Equal("customers", table.Name); Assert.Equal("id", Assert.Single(table.Columns).Name); }
     [Fact] public void DatabaseKindAfterName_IsAccepted() { var database = Assert.IsType<DatabaseDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"application\",\"kind\":\"database\"}]}").Objects)); Assert.Equal("application", database.Name); }
     [Fact] public void PrimaryKeyKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"pk_customers\",\"columns\":[\"id\"],\"kind\":\"primaryKey\"}")).Objects)); Assert.IsType<PrimaryKeyConstraint>(Assert.Single(table.Constraints!)); }
@@ -40,4 +42,31 @@ public sealed class DocumentSerializationTests
     private static TableDefinition Table(string name) => new(name, [new("id", new("int"))]);
     private static string DependencyDocument(string dependency) => "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"parent\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]},{\"kind\":\"table\",\"name\":\"child\",\"dependsOn\":[DEPENDENCY],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}".Replace("DEPENDENCY", dependency, StringComparison.Ordinal);
     private static string ConstraintDocument(string constraint) => "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"constraints\":[CONSTRAINT]}]}".Replace("CONSTRAINT", constraint, StringComparison.Ordinal);
+    public static IEnumerable<object[]> InvalidNullStructures()
+    {
+        yield return ["{\"formatVersion\":1,\"objects\":[null]}", "objects[0]"];
+        yield return ["{\"formatVersion\":1,\"objects\":[{\"kind\":\"database\",\"name\":null}]}", "objects[0].name"];
+        yield return ["{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":null,\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}", "objects[0].name"];
+        yield return [CanonicalTable("\"columns\":null"), "objects[0].columns"];
+        yield return [CanonicalTable("\"columns\":[null]"), "objects[0].columns[0]"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":null,\"type\":{\"name\":\"int\"}}]"), "objects[0].columns[0].name"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":\"id\",\"type\":null}]"), "objects[0].columns[0].type"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":\"id\",\"type\":{\"name\":null}}]"), "objects[0].columns[0].type.name"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[null]"), "objects[0].constraints[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"primaryKey\",\"name\":\"pk\",\"columns\":null}]"), "objects[0].constraints[0].columns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"primaryKey\",\"name\":\"pk\",\"columns\":[null]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"unique\",\"name\":\"uq\",\"columns\":[null]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"check\",\"name\":\"ck\",\"expression\":null}]"), "objects[0].constraints[0].expression"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"check\",\"name\":\"ck\",\"expression\":{\"value\":null}}]"), "objects[0].constraints[0].expression.value"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":null,\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].columns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[null],\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":null,\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].referencedTable"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":\"parent\",\"referencedColumns\":null}]"), "objects[0].constraints[0].referencedColumns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":\"parent\",\"referencedColumns\":[null]}]"), "objects[0].constraints[0].referencedColumns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[null]"), "objects[0].dependsOn[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":null,\"name\":\"parent\"}]"), "objects[0].dependsOn[0].kind"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":\"table\",\"name\":null}]"), "objects[0].dependsOn[0].name"];
+    }
+    private const string ValidColumns = "\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]";
+    private static string CanonicalTable(string members) => $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"table\",\"name\":\"customers\",{members}}}]}}";
 }
