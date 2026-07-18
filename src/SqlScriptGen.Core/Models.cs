@@ -6,7 +6,11 @@ namespace SqlScriptGen.Core;
 public enum DatabaseDialect { PostgreSql, MySql }
 
 [JsonConverter(typeof(JsonStringEnumConverter<DatabaseObjectKind>))]
-public enum DatabaseObjectKind { Table, Database }
+public enum DatabaseObjectKind
+{
+    [JsonStringEnumMemberName("table")] Table,
+    [JsonStringEnumMemberName("database")] Database
+}
 
 [JsonConverter(typeof(JsonStringEnumConverter<ReferentialAction>))]
 public enum ReferentialAction { NoAction, Restrict, Cascade, SetNull, SetDefault }

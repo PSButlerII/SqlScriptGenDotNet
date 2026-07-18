@@ -28,6 +28,8 @@ Required canonical members and collection entries cannot be null. The optional `
 
 Objects may declare `dependsOn` entries with `kind`, `name`, and optional `schema`. Explicit targets must exist in the same document. Foreign keys to tables present in the document create internal ordering dependencies. A foreign key to a table absent from the document remains a valid external SQL reference. Raw default and check expressions are never parsed for dependencies.
 
+`dependsOn` is canonical document metadata and is not part of the legacy unversioned single-table shape. Dependency `kind` values are exactly `table` and `database`, and canonical serialization emits those lowercase values. Legacy inputs that require dependencies must be migrated into the versioned envelope.
+
 When a foreign-key target table is declared in the same document, every referenced column must exist on that table; inconsistencies are semantic validation errors. A target absent from the document is treated as an external reference, so its column existence cannot be verified by SqlScriptGen.
 
 Dependencies are ordered with a stable topological sort: prerequisites precede dependents, while declaration order breaks ties between otherwise available objects. Missing explicit dependencies, self-dependencies, and cycles are validation errors. Input collections are never mutated.
