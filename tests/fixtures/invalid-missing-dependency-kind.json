@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "parent",
+      "columns": [
+        { "name": "id", "type": { "name": "int" } }
+      ]
+    },
+    {
+      "kind": "table",
+      "name": "child",
+      "dependsOn": [
+        { "name": "parent" }
+      ],
+      "columns": [
+        { "name": "id", "type": { "name": "int" } }
+      ]
+    }
+  ]
+}

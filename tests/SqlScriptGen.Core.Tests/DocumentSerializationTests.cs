@@ -5,6 +5,10 @@ namespace SqlScriptGen.Core.Tests;
 
 public sealed class DocumentSerializationTests
 {
+    [Fact] public void MissingDependencyKind_IsRejectedEvenWhenTargetExists() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"name\":\"parent\"}"))); Assert.Contains("dependsOn[0]", ex.Path ?? string.Empty); }
+    [Fact] public void MissingDependencyName_IsRejected() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"table\"}"))); Assert.Contains("dependsOn[0]", ex.Path ?? string.Empty); }
+    [Fact] public void ValidDependency_DeserializesRequiredIdentity() { var document = SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"table\",\"name\":\"parent\"}")); var dependency = Assert.Single(document.Objects[1].DependsOn!); Assert.Equal(DatabaseObjectKind.Table, dependency.Kind); Assert.Equal("parent", dependency.Name); }
+    [Fact] public void UnknownDependencyKind_IsRejected() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"view\",\"name\":\"parent\"}")));
     [Fact] public void CanonicalDocument_RoundTrips() { var value = Document(Table("a"), new DatabaseDefinition("db")); var roundTrip = SqlDefinitionDocumentJson.Read(SqlDefinitionDocumentJson.Serialize(value)); Assert.Collection(roundTrip.Objects, x => Assert.IsType<TableDefinition>(x), x => Assert.IsType<DatabaseDefinition>(x)); }
     [Fact] public void LegacyTable_IsAdapted() { var value = SqlDefinitionDocumentJson.Read("{\"name\":\"legacy\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"); Assert.Equal(SqlDefinitionDocument.CurrentFormatVersion, value.FormatVersion); Assert.Equal("legacy", Assert.IsType<TableDefinition>(Assert.Single(value.Objects)).Name); }
     [Fact] public void LegacySerialization_DoesNotGainDocumentMetadata() => Assert.DoesNotContain("DependsOn", DefinitionJson.Serialize(Table("legacy")));
@@ -20,4 +24,5 @@ public sealed class DocumentSerializationTests
     [Fact] public void UnsupportedVersion_CannotBeSerialized() => Assert.Throws<ArgumentException>(() => SqlDefinitionDocumentJson.Serialize(new(2, [Table("a")])));
     private static SqlDefinitionDocument Document(params IDatabaseObject[] objects) => new(1, objects);
     private static TableDefinition Table(string name) => new(name, [new("id", new("int"))]);
+    private static string DependencyDocument(string dependency) => "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"parent\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]},{\"kind\":\"table\",\"name\":\"child\",\"dependsOn\":[DEPENDENCY],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}".Replace("DEPENDENCY", dependency, StringComparison.Ordinal);
 }
