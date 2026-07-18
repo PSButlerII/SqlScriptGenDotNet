@@ -1,0 +1,1 @@
+{"formatVersion":1,"objects":[{"kind":"table","name":"parent","columns":[{"name":"id","type":{"name":"int"}}]},{"kind":"table","name":"child","dependsOn":[{"kind":"Table","name":"parent"}],"columns":[{"name":"id","type":{"name":"int"}}]}]}

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "customers",
+      "columns": [
+        {
+          "name": "id",
+          "type": {
+            "name": "int"
+          }
+        }
+      ],
+      "constraints": [null]
+    }
+  ]
+}

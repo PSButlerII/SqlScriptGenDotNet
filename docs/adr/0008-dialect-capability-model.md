@@ -1,6 +1,6 @@
 # ADR 0008: Explicit dialect feature capabilities
 
-Status: Accepted, 2026-07-18.
+Status: Implemented, 2026-07-18.
 
 ## Context
 

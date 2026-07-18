@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "orders",
+      "columns": [
+        { "name": "id", "type": { "name": "bigint" }, "nullable": false },
+        { "name": "customer_id", "type": { "name": "bigint" }, "nullable": false }
+      ],
+      "constraints": [
+        { "kind": "foreignKey", "name": "fk_orders_customer", "columns": ["customer_id"], "referencedTable": "customers", "referencedColumns": ["id"], "onDelete": "cascade" }
+      ]
+    },
+    {
+      "kind": "table",
+      "name": "customers",
+      "columns": [
+        { "name": "id", "type": { "name": "bigint" }, "nullable": false, "identity": true }
+      ],
+      "constraints": [
+        { "kind": "primaryKey", "name": "pk_customers", "columns": ["id"] }
+      ]
+    },
+    {
+      "kind": "table",
+      "name": "audit_alpha",
+      "columns": [
+        { "name": "id", "type": { "name": "bigint" }, "nullable": false },
+        { "name": "external_user_id", "type": { "name": "bigint" } }
+      ],
+      "constraints": [
+        { "kind": "foreignKey", "name": "fk_audit_external", "columns": ["external_user_id"], "referencedTable": "external_users", "referencedColumns": ["id"] }
+      ]
+    },
+    {
+      "kind": "table",
+      "name": "audit_beta",
+      "columns": [
+        { "name": "id", "type": { "name": "bigint" }, "nullable": false }
+      ]
+    }
+  ]
+}

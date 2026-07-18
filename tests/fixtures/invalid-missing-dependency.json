@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "dependent",
+      "columns": [
+        { "name": "id", "type": { "name": "int" } }
+      ],
+      "dependsOn": [
+        { "kind": "table", "name": "missing" }
+      ]
+    }
+  ]
+}

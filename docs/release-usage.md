@@ -1,4 +1,4 @@
-# SqlScriptGenDotNet 1.0.0 quick start
+# SqlScriptGenDotNet quick start
 
 The executable is self-contained. Run `sqlscriptgen --help` (or `sqlscriptgen.exe --help` on Windows).
 

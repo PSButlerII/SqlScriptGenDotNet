@@ -1,0 +1,17 @@
+{
+  "name": "child",
+  "dependsOn": [
+    {
+      "kind": "table",
+      "name": "parent"
+    }
+  ],
+  "columns": [
+    {
+      "name": "id",
+      "type": {
+        "name": "int"
+      }
+    }
+  ]
+}

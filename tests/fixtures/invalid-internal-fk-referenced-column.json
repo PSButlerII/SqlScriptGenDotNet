@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "objects": [
+    {
+      "kind": "table",
+      "name": "parent",
+      "columns": [
+        {
+          "name": "id",
+          "type": {
+            "name": "int"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "name": "child",
+      "columns": [
+        {
+          "name": "parent_id",
+          "type": {
+            "name": "int"
+          }
+        }
+      ],
+      "constraints": [
+        {
+          "kind": "foreignKey",
+          "name": "fk_child_parent",
+          "columns": ["parent_id"],
+          "referencedTable": "parent",
+          "referencedColumns": ["missing"]
+        }
+      ]
+    }
+  ]
+}

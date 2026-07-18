@@ -5,6 +5,8 @@ A production-oriented .NET 10 command-line tool and reusable library that genera
 ## Features
 
 - Interactive and repeatable JSON workflows
+- Canonical format-version-1 documents containing multiple ordered tables or databases
+- Backward-compatible support for every valid 1.0 single-table JSON document
 - `CREATE TABLE` and `CREATE DATABASE`
 - Ordered columns; length and decimal arguments; nullability, defaults, identity/auto-increment
 - primary key, unique, check, and composite foreign-key constraints with referential actions
@@ -33,6 +35,7 @@ Download the `win-x64.zip` or `linux-x64.tar.gz` asset from [GitHub Releases](ht
 sqlscriptgen interactive
 sqlscriptgen generate --dialect postgresql --input examples/postgresql-customer.json
 sqlscriptgen generate --dialect mysql --input examples/mysql-customer.json --output customer.sql
+sqlscriptgen generate --dialect postgresql --input examples/v1/postgresql-multi-table.json
 sqlscriptgen create-database --dialect postgresql --name example_database
 sqlscriptgen list-types --dialect mysql
 sqlscriptgen --help
@@ -49,7 +52,7 @@ CREATE TABLE "public"."customers" (
 );
 ```
 
-See the [user guide](docs/user-guide.md) for interactive and JSON details. JSON properties are case-insensitive; unknown properties are rejected. Constraint `kind` values are `primaryKey`, `unique`, `check`, and `foreignKey`.
+See the [JSON format guide](docs/json-format-v1.md), [schema](schemas/sqlscriptgen-document-v1.schema.json), and [user guide](docs/user-guide.md). Canonical documents require `formatVersion: 1`, use ordered `objects`, and support only `table` and `database`. Legacy single-table documents remain accepted. Unknown versions, kinds, and properties are rejected.
 
 ## Publish
 
@@ -60,10 +63,10 @@ dotnet publish .\src\SqlScriptGen.Cli\SqlScriptGen.Cli.csproj -c Release -r win-
 dotnet publish ./src/SqlScriptGen.Cli/SqlScriptGen.Cli.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-Maintainers can create both archives and checksums with `./scripts/Build-Release.ps1 -Version 1.0.0` after validation. See [development](docs/development.md) for the complete tagging and release process.
+Maintainers can create both archives and checksums with `./scripts/Build-Release.ps1 -Version 1.1.0` after validation. See [development](docs/development.md) for the complete tagging and release process.
 
 ## Architecture and safety
 
 `SqlScriptGen.Core` owns typed definitions, validation, serialization, catalogs, and renderers. `SqlScriptGen.Cli` owns arguments, console interaction, and files. Raw defaults/checks are explicit expressions and are emitted but never executed. Review every generated script before running it.
 
-Known limitations include one table per JSON file, no indexes/alter statements, conservative 63-character identifier limits, and no semantic parser for raw expressions. See [architecture](docs/architecture.md), [migration report](docs/migration-report.md), [validation report](docs/validation-report.md), [future-work audit](docs/future-work-audit.md), [post-1.0 architecture review](docs/post-1.0-architecture-review.md), and [roadmap](docs/roadmap.md).
+Known limitations include no mixed database/table documents, indexes, schemas as objects, or alter statements; conservative 63-character identifier limits; and no semantic parser for raw expressions. See [architecture](docs/architecture.md), [dialect capabilities](docs/dialect-capabilities.md), [migration report](docs/migration-report.md), [future-work audit](docs/future-work-audit.md), and [roadmap](docs/roadmap.md).

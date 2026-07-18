@@ -1,0 +1,150 @@
+using System.Text.Json;
+using SqlScriptGen.Core;
+
+namespace SqlScriptGen.Core.Tests;
+
+public sealed class DocumentSerializationTests
+{
+    [Fact] public void LegacySerialization_ExcludesDependenciesThroughHelperAndOptionsWithoutMutation() { var plain = Table("child"); var table = plain with { DependsOn = [new(DatabaseObjectKind.Table, "parent")] }; var expected = DefinitionJson.Serialize(plain); Assert.Equal(expected, DefinitionJson.Serialize(table)); Assert.Equal(expected, JsonSerializer.Serialize(table, DefinitionJson.Options)); Assert.DoesNotContain("dependsOn", expected, StringComparison.OrdinalIgnoreCase); Assert.Single(table.DependsOn!); }
+    [Fact] public void LegacyInput_WithDependenciesIsRejected() { const string json = "{\"name\":\"child\",\"dependsOn\":[{\"kind\":\"table\",\"name\":\"parent\"}],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"; Assert.Throws<JsonException>(() => DefinitionJson.Deserialize(json)); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); }
+    [Fact] public void CanonicalDependencyKinds_AreExactAndRoundTripDeterministically() { var parent = Table("parent"); var child = Table("child") with { DependsOn = [new(DatabaseObjectKind.Table, "parent"), new(DatabaseObjectKind.Table, "parent", "public")] }; var application = new DatabaseDefinition("application"); var reporting = new DatabaseDefinition("reporting") with { DependsOn = [new(DatabaseObjectKind.Database, "application")] }; var document = Document(parent, child, application, reporting); var json = SqlDefinitionDocumentJson.Serialize(document); using var parsed = JsonDocument.Parse(json); var tableDependencies = parsed.RootElement.GetProperty("objects")[1].GetProperty("dependsOn"); Assert.Equal("table", tableDependencies[0].GetProperty("kind").GetString()); Assert.Equal("table", tableDependencies[1].GetProperty("kind").GetString()); Assert.Equal("public", tableDependencies[1].GetProperty("schema").GetString()); Assert.Equal("database", parsed.RootElement.GetProperty("objects")[3].GetProperty("dependsOn")[0].GetProperty("kind").GetString()); var roundTrip = SqlDefinitionDocumentJson.Read(json); Assert.Equal(DatabaseObjectKind.Database, Assert.Single(roundTrip.Objects[3].DependsOn!).Kind); Assert.Equal(json, SqlDefinitionDocumentJson.Serialize(roundTrip)); }
+    [Theory, InlineData("table", DatabaseObjectKind.Table), InlineData("database", DatabaseObjectKind.Database)]
+    public void DirectCanonicalOptions_AcceptExactDependencyKinds(string token, DatabaseObjectKind expected) { var document = JsonSerializer.Deserialize<SqlDefinitionDocument>(DependencyDocument($"{{\"kind\":\"{token}\",\"name\":\"parent\"}}"), SqlDefinitionDocumentJson.Options)!; Assert.Equal(expected, Assert.Single(document.Objects[1].DependsOn!).Kind); }
+    [Theory, MemberData(nameof(InvalidCanonicalDependencyKinds))]
+    public void CanonicalDependencyKindContract_IsEnforcedByBothApis(string token) { var json = DependencyDocument($"{{\"kind\":{token},\"name\":\"parent\"}}"); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(json, SqlDefinitionDocumentJson.Options)); }
+    [Fact] public void CanonicalEnumWireValues_ConformToSchema() { var foreignKey = new ForeignKeyConstraint("fk", ["parent_id"], "parent", ["id"], OnDelete: ReferentialAction.Cascade, OnUpdate: ReferentialAction.SetNull); var child = new TableDefinition("child", [new("parent_id", new("int"))], [new PrimaryKeyConstraint("pk_child", ["parent_id"]), foreignKey]) with { DependsOn = [new(DatabaseObjectKind.Table, "parent")] }; using var parsed = JsonDocument.Parse(SqlDefinitionDocumentJson.Serialize(Document(Table("parent"), child))); var childJson = parsed.RootElement.GetProperty("objects")[1]; Assert.Equal("table", childJson.GetProperty("kind").GetString()); Assert.Equal("table", childJson.GetProperty("dependsOn")[0].GetProperty("kind").GetString()); Assert.Equal("primaryKey", childJson.GetProperty("constraints")[0].GetProperty("kind").GetString()); Assert.Equal("foreignKey", childJson.GetProperty("constraints")[1].GetProperty("kind").GetString()); Assert.Equal("cascade", childJson.GetProperty("constraints")[1].GetProperty("onDelete").GetString()); Assert.Equal("setNull", childJson.GetProperty("constraints")[1].GetProperty("onUpdate").GetString()); }
+    [Fact] public void LegacyReferentialActionWireValues_RemainVersionOneCompatible() { var table = new TableDefinition("child", [new("id", new("int"))], [new ForeignKeyConstraint("fk", ["id"], "parent", ["id"], OnDelete: ReferentialAction.Cascade, OnUpdate: ReferentialAction.SetNull)]); using var parsed = JsonDocument.Parse(DefinitionJson.Serialize(table)); var foreignKey = parsed.RootElement.GetProperty("Constraints")[0]; Assert.Equal("cascade", foreignKey.GetProperty("OnDelete").GetString()); Assert.Equal("setNull", foreignKey.GetProperty("OnUpdate").GetString()); }
+    [Theory, InlineData("onDelete"), InlineData("onUpdate")]
+    public void NumericCanonicalReferentialAction_IsRejectedWithPath(string property) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ActionDocument($"\"{property}\":2"))); Assert.Contains($"objects[0].constraints[0].{property}", ex.Path ?? ex.Message); }
+    [Theory, InlineData("true"), InlineData("{}"), InlineData("[]")]
+    public void NonStringCanonicalReferentialAction_IsRejected(string value) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ActionDocument($"\"onDelete\":{value}"))); Assert.Contains("objects[0].constraints[0].onDelete", ex.Path ?? ex.Message); }
+    [Fact] public void NullAndOmittedCanonicalReferentialActions_AreAccepted() { var withNulls = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":null,\"onUpdate\":null"))); Assert.Null(withNulls.OnDelete); Assert.Null(withNulls.OnUpdate); var omitted = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument(null))); Assert.Null(omitted.OnDelete); Assert.Null(omitted.OnUpdate); }
+    [Theory, InlineData("noAction", ReferentialAction.NoAction), InlineData("restrict", ReferentialAction.Restrict), InlineData("cascade", ReferentialAction.Cascade), InlineData("setNull", ReferentialAction.SetNull), InlineData("setDefault", ReferentialAction.SetDefault)]
+    public void CanonicalReferentialActionStrings_AreAcceptedExactly(string token, ReferentialAction expected) { var foreignKey = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument($"\"onDelete\":\"{token}\",\"onUpdate\":\"{token}\""))); Assert.Equal(expected, foreignKey.OnDelete); Assert.Equal(expected, foreignKey.OnUpdate); }
+    [Theory, MemberData(nameof(InvalidCanonicalActionCasing))]
+    public void CanonicalReferentialActionCasing_IsRejectedByReaderAndPublicOptions(string property, string token) { var json = ActionDocument($"\"{property}\":\"{token}\""); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(json, SqlDefinitionDocumentJson.Options)); }
+    [Fact] public void UnknownCanonicalReferentialAction_IsRejected() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":\"deleteEverything\"")));
+    [Fact] public void DirectCanonicalOptions_RejectNumericReferentialActions() => Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(ActionDocument("\"onDelete\":2"), SqlDefinitionDocumentJson.Options));
+    [Fact] public void LegacyNumericReferentialActions_RemainAccepted() { const string json = "{\"Name\":\"child\",\"Columns\":[{\"Name\":\"id\",\"Type\":{\"Name\":\"int\"}}],\"Constraints\":[{\"kind\":\"foreignKey\",\"Name\":\"fk\",\"Columns\":[\"id\"],\"ReferencedTable\":\"parent\",\"ReferencedColumns\":[\"id\"],\"OnDelete\":2}]}"; var table = DefinitionJson.Deserialize(json); Assert.Equal(ReferentialAction.Cascade, Assert.IsType<ForeignKeyConstraint>(Assert.Single(table.Constraints!)).OnDelete); Assert.Equal(ReferentialAction.Cascade, Assert.IsType<ForeignKeyConstraint>(Assert.Single(JsonSerializer.Deserialize<TableDefinition>(json, DefinitionJson.Options)!.Constraints!)).OnDelete); }
+    [Fact] public void LegacyIncorrectlyCasedReferentialActions_RemainAccepted() { const string json = "{\"Name\":\"child\",\"Columns\":[{\"Name\":\"id\",\"Type\":{\"Name\":\"int\"}}],\"Constraints\":[{\"kind\":\"foreignKey\",\"Name\":\"fk\",\"Columns\":[\"id\"],\"ReferencedTable\":\"parent\",\"ReferencedColumns\":[\"id\"],\"OnDelete\":\"Cascade\",\"OnUpdate\":\"SETNULL\"}]}"; var foreignKey = Assert.IsType<ForeignKeyConstraint>(Assert.Single(DefinitionJson.Deserialize(json).Constraints!)); Assert.Equal(ReferentialAction.Cascade, foreignKey.OnDelete); Assert.Equal(ReferentialAction.SetNull, foreignKey.OnUpdate); }
+    [Fact] public void CanonicalActionPropertyNameRemainsCaseInsensitive() => Assert.Equal(ReferentialAction.Cascade, ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument("\"ONDELETE\":\"cascade\""))).OnDelete);
+    [Theory, InlineData("Table", "object"), InlineData("DATABASE", "object"), InlineData("PrimaryKey", "constraint"), InlineData("UNIQUE", "constraint"), InlineData("Check", "constraint"), InlineData("ForeignKey", "constraint"), InlineData("Table", "dependency"), InlineData("DATABASE", "dependency")]
+    public void OtherClosedCanonicalTokens_RejectIncorrectCasing(string token, string location) { var json = location switch { "object" => token.Equals("Table", StringComparison.Ordinal) ? $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"{token}\",\"name\":\"x\",\"columns\":[]}}]}}" : $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"{token}\",\"name\":\"x\"}}]}}", "constraint" => ConstraintDocument($"{{\"kind\":\"{token}\",\"name\":\"x\",\"columns\":[\"id\"]}}"), _ => DependencyDocument($"{{\"kind\":\"{token}\",\"name\":\"parent\"}}") }; Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); }
+    [Fact]
+    public void EveryCanonicalReferentialAction_SerializesWithExactToken()
+    {
+        var expected = new[] { "noAction", "restrict", "cascade", "setNull", "setDefault" };
+        var actual = Enum.GetValues<ReferentialAction>().Select(action =>
+        {
+            var foreignKey = new ForeignKeyConstraint("fk", ["id"], "parent", ["id"], OnDelete: action);
+            var table = new TableDefinition("child", [new("id", new("int"))], [foreignKey]);
+            using var json = JsonDocument.Parse(SqlDefinitionDocumentJson.Serialize(Document(table)));
+            return json.RootElement.GetProperty("objects")[0].GetProperty("constraints")[0].GetProperty("onDelete").GetString();
+        });
+        Assert.Equal(expected, actual);
+    }
+    [Fact] public void CanonicalReferentialActions_RoundTripDeterministically() { var document = SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":\"cascade\",\"onUpdate\":\"setNull\"")); var canonical = SqlDefinitionDocumentJson.Serialize(document); Assert.Equal(canonical, SqlDefinitionDocumentJson.Serialize(SqlDefinitionDocumentJson.Read(canonical))); }
+    [Theory, MemberData(nameof(InvalidNullStructures))] public void CanonicalNullStructure_IsJsonError(string json, string path) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Contains(path, ex.Message); }
+    [Fact] public void OptionalNullMembers_RemainAccepted() { const string json = "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"schema\":null,\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"},\"default\":null}],\"constraints\":null,\"dependsOn\":[]}]}"; var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(json).Objects)); Assert.Null(table.Constraints); Assert.Null(table.Schema); }
+    [Fact] public void TableKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"kind\":\"table\"}]}").Objects)); Assert.Equal("customers", table.Name); Assert.Equal("id", Assert.Single(table.Columns).Name); }
+    [Fact] public void DatabaseKindAfterName_IsAccepted() { var database = Assert.IsType<DatabaseDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"application\",\"kind\":\"database\"}]}").Objects)); Assert.Equal("application", database.Name); }
+    [Fact] public void PrimaryKeyKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"pk_customers\",\"columns\":[\"id\"],\"kind\":\"primaryKey\"}")).Objects)); Assert.IsType<PrimaryKeyConstraint>(Assert.Single(table.Constraints!)); }
+    [Fact] public void UniqueKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"uq_customers\",\"columns\":[\"id\"],\"kind\":\"unique\"}")).Objects)); Assert.IsType<UniqueConstraint>(Assert.Single(table.Constraints!)); }
+    [Fact] public void CheckKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"ck_customers\",\"expression\":{\"value\":\"id > 0\"},\"kind\":\"check\"}")).Objects)); Assert.IsType<CheckConstraint>(Assert.Single(table.Constraints!)); }
+    [Fact] public void ForeignKeyKindInMiddle_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"fk_parent\",\"columns\":[\"id\"],\"kind\":\"foreignKey\",\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"],\"onDelete\":\"cascade\"}")).Objects)); var foreignKey = Assert.IsType<ForeignKeyConstraint>(Assert.Single(table.Constraints!)); Assert.Equal(ReferentialAction.Cascade, foreignKey.OnDelete); }
+    [Fact] public void NestedMixedPropertyOrdering_DeserializesAndValidates() { const string json = "{\"formatVersion\":1,\"objects\":[{\"name\":\"parent\",\"schema\":\"public\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"kind\":\"table\"},{\"name\":\"child\",\"schema\":\"public\",\"dependsOn\":[{\"name\":\"parent\",\"schema\":\"public\",\"kind\":\"table\"}],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"constraints\":[{\"name\":\"pk_child\",\"columns\":[\"id\"],\"kind\":\"primaryKey\"}],\"kind\":\"table\"}]}"; var document = SqlDefinitionDocumentJson.Read(json); Assert.True(SqlDefinitionDocumentValidator.Validate(document, DatabaseDialect.PostgreSql).IsValid); var canonical = SqlDefinitionDocumentJson.Serialize(document); Assert.Contains("{\n      \"kind\": \"table\",", canonical); Assert.Equal(canonical, SqlDefinitionDocumentJson.Serialize(SqlDefinitionDocumentJson.Read(canonical))); }
+    [Fact] public void MissingObjectKind_IsJsonError() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"application\"}]}")); Assert.Contains("objects[0].kind", ex.Message); }
+    [Fact] public void MissingTableKind_IsNotInferredFromColumns() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}")); Assert.Contains("objects[0].kind", ex.Message); }
+    [Fact] public void MissingConstraintKind_IsJsonError() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"pk_customers\",\"columns\":[\"id\"]}"))); Assert.Contains("objects[0].constraints[0].kind", ex.Message); }
+    [Fact] public void MissingSecondObjectKind_ReportsCorrectIndex() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"kind\":\"database\",\"name\":\"first\"},{\"name\":\"second\"}]}")); Assert.Contains("objects[1].kind", ex.Message); }
+    [Fact] public void MissingLaterConstraintKind_ReportsCorrectIndex() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"constraints\":[{\"kind\":\"primaryKey\",\"name\":\"pk_customers\",\"columns\":[\"id\"]},{\"name\":\"uq_customers\",\"columns\":[\"id\"]}]}]}")); Assert.Contains("objects[0].constraints[1].kind", ex.Message); }
+    [Fact] public void DiscriminatorPropertyNames_AreCaseInsensitive() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"KIND\":\"table\",\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"constraints\":[{\"KIND\":\"primaryKey\",\"name\":\"pk_customers\",\"columns\":[\"id\"]}]}]}").Objects)); Assert.IsType<PrimaryKeyConstraint>(Assert.Single(table.Constraints!)); }
+    [Fact] public void UnknownConstraintKind_IsRejected() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ConstraintDocument("{\"name\":\"mystery\",\"columns\":[\"id\"],\"kind\":\"index\"}")));
+    [Fact] public void MissingDependencyKind_IsRejectedEvenWhenTargetExists() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"name\":\"parent\"}"))); Assert.Contains("dependsOn[0]", ex.Path ?? string.Empty); }
+    [Fact] public void MissingDependencyName_IsRejected() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"table\"}"))); Assert.Contains("dependsOn[0]", ex.Path ?? string.Empty); }
+    [Fact] public void ValidDependency_DeserializesRequiredIdentity() { var document = SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"table\",\"name\":\"parent\"}")); var dependency = Assert.Single(document.Objects[1].DependsOn!); Assert.Equal(DatabaseObjectKind.Table, dependency.Kind); Assert.Equal("parent", dependency.Name); }
+    [Fact] public void UnknownDependencyKind_IsRejected() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(DependencyDocument("{\"kind\":\"view\",\"name\":\"parent\"}")));
+    [Fact] public void CanonicalDocument_RoundTrips() { var value = Document(Table("a"), new DatabaseDefinition("db")); var roundTrip = SqlDefinitionDocumentJson.Read(SqlDefinitionDocumentJson.Serialize(value)); Assert.Collection(roundTrip.Objects, x => Assert.IsType<TableDefinition>(x), x => Assert.IsType<DatabaseDefinition>(x)); }
+    [Fact] public void LegacyTable_IsAdapted() { var value = SqlDefinitionDocumentJson.Read("{\"name\":\"legacy\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}"); Assert.Equal(SqlDefinitionDocument.CurrentFormatVersion, value.FormatVersion); Assert.Equal("legacy", Assert.IsType<TableDefinition>(Assert.Single(value.Objects)).Name); }
+    [Fact] public void LegacySerialization_DoesNotGainDocumentMetadata() => Assert.DoesNotContain("DependsOn", DefinitionJson.Serialize(Table("legacy")));
+    [Fact] public void CanonicalSerialization_EmitsEnvelopeOnly() { var json = SqlDefinitionDocumentJson.Serialize(Document(Table("a"))); Assert.StartsWith("{\n  \"formatVersion\": 1,\n  \"objects\": [", json); Assert.Contains("\"kind\": \"table\"", json); Assert.EndsWith("\n", json); Assert.DoesNotContain("\r", json); }
+    [Fact] public void UnknownFormatVersion_FailsClearly() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":2,\"objects\":[]}")); Assert.Contains("formatVersion", ex.Message); Assert.Contains("unsupported", ex.Message); }
+    [Fact] public void MissingFormatVersion_FailsClearly() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"objects\":[]}")); Assert.Contains("formatVersion", ex.Message); }
+    [Fact] public void UnknownObjectKind_Fails() { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"kind\":\"view\",\"name\":\"v\"}]}")); Assert.Contains("discriminator", ex.Message, StringComparison.OrdinalIgnoreCase); }
+    [Fact] public void UnknownMember_Fails() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"kind\":\"database\",\"name\":\"db\",\"mystery\":true}]}"));
+    [Fact] public void PropertyNames_AreCaseInsensitive() { var value = SqlDefinitionDocumentJson.Read("{\"FORMATVERSION\":1,\"OBJECTS\":[{\"kind\":\"database\",\"NAME\":\"db\"}]}"); Assert.Equal("db", Assert.IsType<DatabaseDefinition>(Assert.Single(value.Objects)).Name); }
+    [Fact] public void ObjectDeclarationOrder_IsPreserved() { var value = SqlDefinitionDocumentJson.Read(SqlDefinitionDocumentJson.Serialize(Document(Table("z"), Table("a")))); Assert.Equal(["z", "a"], value.Objects.Select(x => x.Identity.Name)); }
+    [Fact] public void ConstraintPolymorphism_IsPreserved() { var table = new TableDefinition("t", [new("id", new("int"))], [new PrimaryKeyConstraint("pk", ["id"])]); var value = SqlDefinitionDocumentJson.Read(SqlDefinitionDocumentJson.Serialize(Document(table))); Assert.IsType<PrimaryKeyConstraint>(Assert.Single(Assert.IsType<TableDefinition>(Assert.Single(value.Objects)).Constraints!)); }
+    [Fact] public void ExplicitDependencies_RoundTrip() { var table = Table("b") with { DependsOn = [new(DatabaseObjectKind.Table, "a", "public")] }; var roundTrip = SqlDefinitionDocumentJson.Read(SqlDefinitionDocumentJson.Serialize(Document(table))); Assert.Equal(new DatabaseObjectIdentity(DatabaseObjectKind.Table, "A", "PUBLIC"), Assert.Single(roundTrip.Objects[0].DependsOn!)); }
+    [Fact] public void UnsupportedVersion_CannotBeSerialized() => Assert.Throws<ArgumentException>(() => SqlDefinitionDocumentJson.Serialize(new(2, [Table("a")])));
+    private static SqlDefinitionDocument Document(params IDatabaseObject[] objects) => new(1, objects);
+    private static TableDefinition Table(string name) => new(name, [new("id", new("int"))]);
+    private static string DependencyDocument(string dependency) => "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"parent\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]},{\"kind\":\"table\",\"name\":\"child\",\"dependsOn\":[DEPENDENCY],\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}".Replace("DEPENDENCY", dependency, StringComparison.Ordinal);
+    private static string ConstraintDocument(string constraint) => "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"constraints\":[CONSTRAINT]}]}".Replace("CONSTRAINT", constraint, StringComparison.Ordinal);
+    private static string ActionDocument(string? actionMember) => ConstraintDocument("{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"]" + (actionMember is null ? "" : "," + actionMember) + "}");
+    private static ForeignKeyConstraint ForeignKey(SqlDefinitionDocument document) => Assert.IsType<ForeignKeyConstraint>(Assert.Single(Assert.IsType<TableDefinition>(Assert.Single(document.Objects)).Constraints!));
+    public static IEnumerable<object[]> InvalidNullStructures()
+    {
+        yield return ["{\"formatVersion\":1,\"objects\":[null]}", "objects[0]"];
+        yield return ["{\"formatVersion\":1,\"objects\":[{\"kind\":\"database\",\"name\":null}]}", "objects[0].name"];
+        yield return ["{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":null,\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]}]}", "objects[0].name"];
+        yield return [CanonicalTable("\"columns\":null"), "objects[0].columns"];
+        yield return [CanonicalTable("\"columns\":[null]"), "objects[0].columns[0]"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":null,\"type\":{\"name\":\"int\"}}]"), "objects[0].columns[0].name"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":\"id\",\"type\":null}]"), "objects[0].columns[0].type"];
+        yield return [CanonicalTable("\"columns\":[{\"name\":\"id\",\"type\":{\"name\":null}}]"), "objects[0].columns[0].type.name"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[null]"), "objects[0].constraints[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"primaryKey\",\"name\":\"pk\",\"columns\":null}]"), "objects[0].constraints[0].columns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"primaryKey\",\"name\":\"pk\",\"columns\":[null]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"unique\",\"name\":\"uq\",\"columns\":[null]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"check\",\"name\":\"ck\",\"expression\":null}]"), "objects[0].constraints[0].expression"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"check\",\"name\":\"ck\",\"expression\":{\"value\":null}}]"), "objects[0].constraints[0].expression.value"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":null,\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].columns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[null],\"referencedTable\":\"parent\",\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].columns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":null,\"referencedColumns\":[\"id\"]}]"), "objects[0].constraints[0].referencedTable"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":\"parent\",\"referencedColumns\":null}]"), "objects[0].constraints[0].referencedColumns"];
+        yield return [CanonicalTable(ValidColumns + ",\"constraints\":[{\"kind\":\"foreignKey\",\"name\":\"fk\",\"columns\":[\"id\"],\"referencedTable\":\"parent\",\"referencedColumns\":[null]}]"), "objects[0].constraints[0].referencedColumns[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[null]"), "objects[0].dependsOn[0]"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":null,\"name\":\"parent\"}]"), "objects[0].dependsOn[0].kind"];
+        yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":\"table\",\"name\":null}]"), "objects[0].dependsOn[0].name"];
+    }
+    public static IEnumerable<object[]> InvalidCanonicalActionCasing()
+    {
+        yield return ["onDelete", "NoAction"];
+        yield return ["onUpdate", "NOACTION"];
+        yield return ["onDelete", "Restrict"];
+        yield return ["onDelete", "Cascade"];
+        yield return ["onUpdate", "CASCADE"];
+        yield return ["onDelete", "SetNull"];
+        yield return ["onUpdate", "setnull"];
+        yield return ["onUpdate", "SETNULL"];
+        yield return ["onDelete", "SetDefault"];
+        yield return ["onUpdate", "setdefault"];
+        yield return ["onDelete", "SETDEFAULT"];
+        yield return ["onDelete", " cascade"];
+        yield return ["onUpdate", "cascade "];
+    }
+    public static IEnumerable<object[]> InvalidCanonicalDependencyKinds()
+    {
+        yield return ["0"];
+        yield return ["1"];
+        yield return ["-1"];
+        yield return ["2"];
+        yield return ["true"];
+        yield return ["false"];
+        yield return ["null"];
+        yield return ["{}"];
+        yield return ["[]"];
+        yield return ["\"Table\""];
+        yield return ["\"TABLE\""];
+        yield return ["\"Database\""];
+        yield return ["\"DATABASE\""];
+        yield return ["\" table\""];
+        yield return ["\"table \""];
+        yield return ["\" database\""];
+        yield return ["\"database \""];
+        yield return ["\"view\""];
+    }
+    private const string ValidColumns = "\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]";
+    private static string CanonicalTable(string members) => $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"table\",\"name\":\"customers\",{members}}}]}}";
+}

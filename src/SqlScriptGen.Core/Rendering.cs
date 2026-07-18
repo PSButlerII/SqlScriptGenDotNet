@@ -23,6 +23,31 @@ public sealed class SqlGenerator
         if (!result.IsValid) throw new SqlValidationException(result.Errors);
         return renderers[dialect].RenderCreateDatabase(database);
     }
+
+    public GeneratedSqlDocument Generate(SqlDefinitionDocument document, DatabaseDialect dialect)
+    {
+        var validation = SqlDefinitionDocumentValidator.Validate(document, dialect);
+        if (!validation.IsValid) throw new SqlValidationException(validation.Errors);
+
+        var renderer = renderers[dialect];
+        var declarationOrder = document.Objects.Select((item, index) => (item.Identity, index)).ToDictionary(x => x.Identity, x => x.index);
+        var orderedObjects = DatabaseObjectOrderer.Order(document);
+        var statements = new List<GeneratedSqlStatement>(orderedObjects.Count);
+        for (var generatedOrder = 0; generatedOrder < orderedObjects.Count; generatedOrder++)
+        {
+            var source = orderedObjects[generatedOrder];
+            var rendered = source switch
+            {
+                TableDefinition table => (renderer.RenderCreateTable(table), GeneratedSqlStatementKind.CreateTable),
+                DatabaseDefinition database => (renderer.RenderCreateDatabase(database), GeneratedSqlStatementKind.CreateDatabase),
+                _ => throw new NotSupportedException($"Object type '{source.GetType().Name}' cannot be rendered.")
+            };
+            statements.Add(new(source.Identity, rendered.Item2, rendered.Item1.Sql, declarationOrder[source.Identity], generatedOrder));
+        }
+
+        var sql = string.Join("\n\n", statements.Select(statement => statement.Sql.TrimEnd('\r', '\n'))) + "\n";
+        return new(sql) { Statements = statements };
+    }
 }
 
 public sealed class SqlValidationException(IReadOnlyList<ValidationError> errors) : Exception("SQL definition validation failed.") { public IReadOnlyList<ValidationError> Errors { get; } = errors; }

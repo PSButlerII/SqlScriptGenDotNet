@@ -12,6 +12,8 @@ This roadmap favors vertical, releasable increments. Every phase preserves Postg
 
 ## Phase 1 — Multi-object document foundation
 
+Implementation status: in progress for version 1.1.0; the implementation PR covers issues #1–#8 without adding later SQL syntax.
+
 - **Goal/value:** generate a deterministic script containing several typed objects while keeping v1.0 files working.
 - **Scope/deliverables:** versioned envelope, common object identity, ordered objects/statements, dependency metadata and stable ordering, capability-aware renderer orchestration, CLI integration, fixtures, and migration guide.
 - **Non-goals/prerequisites:** no new SQL object syntax, GUI, execution, or general SQL AST; ADRs 0004–0008 must be resolved.
