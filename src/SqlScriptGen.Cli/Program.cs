@@ -32,7 +32,7 @@ public static class CliApplication
     private static async Task<int> GenerateAsync(string[] args, TextWriter output, CancellationToken ct)
     {
         var dialect = ParseDialect(Required(args, "--dialect")); var path = Required(args, "--input"); var outPath = Optional(args, "--output");
-        var json = await File.ReadAllTextAsync(path, ct); var table = DefinitionJson.Deserialize(json); var sql = new SqlGenerator().Generate(table, dialect).Sql;
+        var json = await File.ReadAllTextAsync(path, ct); var document = SqlDefinitionDocumentJson.Read(json); var sql = new SqlGenerator().Generate(document, dialect).Sql;
         if (outPath is null) await output.WriteAsync(sql); else await File.WriteAllTextAsync(outPath, sql, ct);
         return 0;
     }
@@ -70,6 +70,9 @@ public static class CliApplication
 
     private const string Help = """
 SqlScriptGenDotNet - deterministic PostgreSQL and MySQL DDL generation
+
+The generate command accepts canonical format-version-1 object documents and
+legacy unversioned single-table JSON files. Version 1 objects are tables and databases.
 
 Usage:
   sqlscriptgen interactive
