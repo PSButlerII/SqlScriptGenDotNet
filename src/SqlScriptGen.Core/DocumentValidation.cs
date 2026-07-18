@@ -162,7 +162,18 @@ internal sealed class DatabaseObjectDependencyGraph
         }
 
         orderedIndexes = result;
-        cyclicIndexes = Enumerable.Range(0, indegrees.Length).Where(index => indegrees[index] > 0).ToArray();
+        cyclicIndexes = Enumerable.Range(0, indegrees.Length).Where(index => indegrees[index] > 0 && IsCyclic(index, index, [])).ToArray();
         return result.Count == prerequisites.Count;
+    }
+
+    private bool IsCyclic(int start, int current, HashSet<int> visited)
+    {
+        if (!visited.Add(current)) return false;
+        foreach (var prerequisite in prerequisites[current])
+        {
+            if (prerequisite == start) return true;
+            if (IsCyclic(start, prerequisite, visited)) return true;
+        }
+        return false;
     }
 }
