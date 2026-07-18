@@ -66,4 +66,4 @@ Maintainers can create both archives and checksums with `./scripts/Build-Release
 
 `SqlScriptGen.Core` owns typed definitions, validation, serialization, catalogs, and renderers. `SqlScriptGen.Cli` owns arguments, console interaction, and files. Raw defaults/checks are explicit expressions and are emitted but never executed. Review every generated script before running it.
 
-Known limitations include one table per JSON file, no indexes/alter statements, conservative 63-character identifier limits, and no semantic parser for raw expressions. See [architecture](docs/architecture.md), [migration report](docs/migration-report.md), [validation report](docs/validation-report.md), and [roadmap](docs/roadmap.md).
+Known limitations include one table per JSON file, no indexes/alter statements, conservative 63-character identifier limits, and no semantic parser for raw expressions. See [architecture](docs/architecture.md), [migration report](docs/migration-report.md), [validation report](docs/validation-report.md), [future-work audit](docs/future-work-audit.md), [post-1.0 architecture review](docs/post-1.0-architecture-review.md), and [roadmap](docs/roadmap.md).
