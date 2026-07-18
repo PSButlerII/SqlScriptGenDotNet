@@ -132,7 +132,7 @@ public static class SqlDefinitionDocumentValidator
             for (var constraintIndex = 0; constraintIndex < source.Constraints.Count; constraintIndex++)
             {
                 if (source.Constraints[constraintIndex] is not ForeignKeyConstraint foreignKey || foreignKey.ReferencedTable is null || foreignKey.ReferencedColumns is null) continue;
-                var targetIdentity = ForeignKeyTargetIdentity.Resolve(source, foreignKey);
+                var targetIdentity = ForeignKeyTargetIdentity.Resolve(foreignKey);
                 if (!internalTables.TryGetValue(targetIdentity, out var target)) continue;
                 var targetColumns = new HashSet<string>(target.Columns.Select(column => column.Name), StringComparer.OrdinalIgnoreCase);
                 for (var columnIndex = 0; columnIndex < foreignKey.ReferencedColumns.Count; columnIndex++)
@@ -148,7 +148,7 @@ public static class SqlDefinitionDocumentValidator
 
 internal static class ForeignKeyTargetIdentity
 {
-    public static DatabaseObjectIdentity Resolve(TableDefinition source, ForeignKeyConstraint foreignKey) => new(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema ?? source.Schema);
+    public static DatabaseObjectIdentity Resolve(ForeignKeyConstraint foreignKey) => new(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema);
 }
 
 public static class DatabaseObjectOrderer
@@ -178,7 +178,7 @@ internal sealed class DatabaseObjectDependencyGraph
             if (objects[i] is not TableDefinition table) continue;
             foreach (var foreignKey in (table.Constraints ?? []).OfType<ForeignKeyConstraint>())
             {
-                var targetIdentity = ForeignKeyTargetIdentity.Resolve(table, foreignKey);
+                var targetIdentity = ForeignKeyTargetIdentity.Resolve(foreignKey);
                 if (identities.TryGetValue(targetIdentity, out var target) && target != i) prerequisites[i].Add(target);
             }
         }

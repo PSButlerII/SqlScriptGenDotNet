@@ -104,6 +104,8 @@ public static class SqlDefinitionDocumentJson
                     ValidateStringArray(constraint, "columns", $"{constraintPath}.columns");
                     RequireString(constraint, "referencedTable", $"{constraintPath}.referencedTable");
                     ValidateStringArray(constraint, "referencedColumns", $"{constraintPath}.referencedColumns");
+                    ValidateOptionalStringOrNull(constraint, "onDelete", $"{constraintPath}.onDelete");
+                    ValidateOptionalStringOrNull(constraint, "onUpdate", $"{constraintPath}.onUpdate");
                     break;
             }
             constraintIndex++;
@@ -134,6 +136,12 @@ public static class SqlDefinitionDocumentJson
             if (value.ValueKind != JsonValueKind.String) throw JsonError($"{path}[{index}]", "A non-null string is required.");
             index++;
         }
+    }
+
+    private static void ValidateOptionalStringOrNull(JsonElement parent, string propertyName, string path)
+    {
+        if (!TryGetProperty(parent, propertyName, out var value) || value.ValueKind is JsonValueKind.String or JsonValueKind.Null) return;
+        throw JsonError(path, "A string or null is required.");
     }
 
     private static JsonElement RequireArray(JsonElement parent, string propertyName, string path)
@@ -205,7 +213,35 @@ public static class SqlDefinitionDocumentJson
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+        options.Converters.Add(new StrictReferentialActionJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
+    }
+
+    private sealed class StrictReferentialActionJsonConverter : JsonConverter<ReferentialAction>
+    {
+        public override ReferentialAction Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String) throw new JsonException("A referential action must be a string.");
+            return reader.GetString() switch
+            {
+                string value when value.Equals("noAction", StringComparison.OrdinalIgnoreCase) => ReferentialAction.NoAction,
+                string value when value.Equals("restrict", StringComparison.OrdinalIgnoreCase) => ReferentialAction.Restrict,
+                string value when value.Equals("cascade", StringComparison.OrdinalIgnoreCase) => ReferentialAction.Cascade,
+                string value when value.Equals("setNull", StringComparison.OrdinalIgnoreCase) => ReferentialAction.SetNull,
+                string value when value.Equals("setDefault", StringComparison.OrdinalIgnoreCase) => ReferentialAction.SetDefault,
+                _ => throw new JsonException("The referential action is not supported.")
+            };
+        }
+
+        public override void Write(Utf8JsonWriter writer, ReferentialAction value, JsonSerializerOptions options) => writer.WriteStringValue(value switch
+        {
+            ReferentialAction.NoAction => "noAction",
+            ReferentialAction.Restrict => "restrict",
+            ReferentialAction.Cascade => "cascade",
+            ReferentialAction.SetNull => "setNull",
+            ReferentialAction.SetDefault => "setDefault",
+            _ => throw new JsonException($"Referential action '{value}' is not supported.")
+        });
     }
 }
