@@ -1,11 +1,11 @@
 # Changelog
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-07-18
 
 - Add canonical format-version-1 documents containing ordered table or database objects.
 - Preserve legacy 1.0 single-table JSON through a compatibility adapter and unchanged public overloads.
-- Add stable dependency ordering, internal/external foreign-key distinction, document validation, cycle diagnostics, and dialect capabilities.
-- Add ordered statement metadata, multi-statement CLI generation, JSON Schema, examples, tests, and migration documentation.
+- Add stable dependency ordering, internal/external foreign-key distinction, cross-object validation, cycle diagnostics, and dialect capability validation.
+- Add strict canonical JSON contracts, ordered statement metadata, multi-statement CLI generation, JSON Schema, examples, tests, and migration documentation.
 - Continue to exclude later roadmap SQL objects and all database execution/connectivity.
 
 ## 1.0.0 - 2026-07-18

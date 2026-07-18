@@ -5,6 +5,7 @@ The executable is self-contained. Run `sqlscriptgen --help` (or `sqlscriptgen.ex
 ```text
 sqlscriptgen generate --dialect postgresql --input postgresql-customer.json
 sqlscriptgen generate --dialect mysql --input mysql-customer.json --output customer.sql
+sqlscriptgen generate --dialect postgresql --input postgresql-multi-table.json
 sqlscriptgen create-database --dialect postgresql --name example_database
 sqlscriptgen interactive
 ```
