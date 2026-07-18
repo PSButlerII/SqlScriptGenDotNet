@@ -49,7 +49,9 @@ public static partial class SqlDefinitionValidator
                 if (fk.ReferencedSchema is not null) errors.AddRange(ValidateIdentifier(fk.ReferencedSchema, "constraints.referencedSchema").Errors);
                 if (fk.Columns.Count != fk.ReferencedColumns.Count) errors.Add(new("constraints", "Foreign-key local and referenced column counts must match."));
                 foreach (var col in fk.ReferencedColumns) errors.AddRange(ValidateIdentifier(col, "constraints.referencedColumns").Errors);
-                if (dialect == DatabaseDialect.MySql && (fk.OnDelete == ReferentialAction.SetDefault || fk.OnUpdate == ReferentialAction.SetDefault)) errors.Add(new("constraints", "MySQL does not support SET DEFAULT referential actions."));
+                var supportedActions = SqlDialectCapabilityCatalog.For(dialect).SupportedReferentialActions;
+                if ((fk.OnDelete is not null && !supportedActions.Contains(fk.OnDelete.Value)) || (fk.OnUpdate is not null && !supportedActions.Contains(fk.OnUpdate.Value)))
+                    errors.Add(new("constraints", $"{dialect} does not support the selected referential action."));
             }
         }
         return new(errors);
