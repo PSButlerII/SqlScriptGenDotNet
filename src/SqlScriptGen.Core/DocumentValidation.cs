@@ -44,6 +44,7 @@ public static class SqlDefinitionDocumentValidator
 
         var capabilities = SqlDialectCapabilityCatalog.For(dialect);
         var identities = new Dictionary<DatabaseObjectIdentity, int>();
+        var duplicateIdentities = new HashSet<DatabaseObjectIdentity>();
         var objectIdentities = new DatabaseObjectIdentity?[document.Objects.Count];
         for (var i = 0; i < document.Objects.Count; i++)
         {
@@ -71,7 +72,10 @@ public static class SqlDefinitionDocumentValidator
             if (!capabilities.SupportedObjectKinds.Contains(current.ObjectKind))
                 errors.Add(new(prefix + ".kind", $"{dialect} does not support object kind '{current.ObjectKind}'."));
             if (objectIdentities[i] is { } identity && !identities.TryAdd(identity, i))
+            {
                 errors.Add(new(prefix + ".name", $"Duplicate object identity '{identity}'."));
+                duplicateIdentities.Add(identity);
+            }
         }
 
         for (var i = 0; i < document.Objects.Count; i++)
@@ -96,6 +100,8 @@ public static class SqlDefinitionDocumentValidator
             }
         }
 
+        ValidateInternalForeignKeys(document.Objects, objectIdentities, duplicateIdentities, errors);
+
         if (errors.Count == 0 && identities.Count == document.Objects.Count)
         {
             var graph = DatabaseObjectDependencyGraph.Create(document.Objects, identities);
@@ -110,6 +116,39 @@ public static class SqlDefinitionDocumentValidator
 
     private static void AddPrefixed(List<ValidationError> errors, ValidationResult result, string prefix) =>
         errors.AddRange(result.Errors.Select(error => new ValidationError($"{prefix}.{error.Path}", error.Message)));
+
+    private static void ValidateInternalForeignKeys(IReadOnlyList<IDatabaseObject> objects, IReadOnlyList<DatabaseObjectIdentity?> objectIdentities, IReadOnlySet<DatabaseObjectIdentity> duplicateIdentities, List<ValidationError> errors)
+    {
+        var internalTables = new Dictionary<DatabaseObjectIdentity, TableDefinition>();
+        for (var i = 0; i < objects.Count; i++)
+        {
+            if (objects[i] is not TableDefinition table || objectIdentities[i] is not { } identity || duplicateIdentities.Contains(identity) || table.Columns is null || table.Columns.Any(column => column?.Name is null)) continue;
+            internalTables[identity] = table;
+        }
+
+        for (var objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+        {
+            if (objects[objectIndex] is not TableDefinition source || source.Constraints is null) continue;
+            for (var constraintIndex = 0; constraintIndex < source.Constraints.Count; constraintIndex++)
+            {
+                if (source.Constraints[constraintIndex] is not ForeignKeyConstraint foreignKey || foreignKey.ReferencedTable is null || foreignKey.ReferencedColumns is null) continue;
+                var targetIdentity = ForeignKeyTargetIdentity.Resolve(source, foreignKey);
+                if (!internalTables.TryGetValue(targetIdentity, out var target)) continue;
+                var targetColumns = new HashSet<string>(target.Columns.Select(column => column.Name), StringComparer.OrdinalIgnoreCase);
+                for (var columnIndex = 0; columnIndex < foreignKey.ReferencedColumns.Count; columnIndex++)
+                {
+                    var referencedColumn = foreignKey.ReferencedColumns[columnIndex];
+                    if (referencedColumn is null || targetColumns.Contains(referencedColumn)) continue;
+                    errors.Add(new($"objects[{objectIndex}].constraints[{constraintIndex}].referencedColumns[{columnIndex}]", $"Referenced column '{referencedColumn}' does not exist on internal table '{targetIdentity}'."));
+                }
+            }
+        }
+    }
+}
+
+internal static class ForeignKeyTargetIdentity
+{
+    public static DatabaseObjectIdentity Resolve(TableDefinition source, ForeignKeyConstraint foreignKey) => new(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema ?? source.Schema);
 }
 
 public static class DatabaseObjectOrderer
@@ -139,7 +178,7 @@ internal sealed class DatabaseObjectDependencyGraph
             if (objects[i] is not TableDefinition table) continue;
             foreach (var foreignKey in (table.Constraints ?? []).OfType<ForeignKeyConstraint>())
             {
-                var targetIdentity = new DatabaseObjectIdentity(DatabaseObjectKind.Table, foreignKey.ReferencedTable, foreignKey.ReferencedSchema ?? table.Schema);
+                var targetIdentity = ForeignKeyTargetIdentity.Resolve(table, foreignKey);
                 if (identities.TryGetValue(targetIdentity, out var target) && target != i) prerequisites[i].Add(target);
             }
         }
