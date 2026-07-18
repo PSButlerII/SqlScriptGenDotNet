@@ -1,6 +1,6 @@
 # ADR 0005: Narrow common database-object abstraction
 
-Status: Proposed, 2026-07-18.
+Status: Accepted, 2026-07-18.
 
 ## Context
 

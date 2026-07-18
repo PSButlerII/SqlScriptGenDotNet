@@ -1,6 +1,6 @@
 # ADR 0004: Versioned multi-object document envelope
 
-Status: Proposed, 2026-07-18.
+Status: Accepted, 2026-07-18.
 
 ## Context
 

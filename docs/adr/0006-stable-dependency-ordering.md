@@ -1,6 +1,6 @@
 # ADR 0006: Stable dependency ordering
 
-Status: Proposed, 2026-07-18.
+Status: Accepted, 2026-07-18.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # ADR 0007: Explicit raw SQL boundaries
 
-Status: Proposed, 2026-07-18.
+Status: Accepted, 2026-07-18.
 
 ## Context
 
