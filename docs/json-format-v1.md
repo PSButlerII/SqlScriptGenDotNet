@@ -36,7 +36,7 @@ When a foreign-key target table is declared in the same document, every referenc
 
 SqlScriptGen emits quoted identifiers, so internal foreign-key table, schema, and column matching uses exact identifier spelling. `Parent` and `parent`, or `ID` and `id`, are not interchangeable for internal validation. A differently cased table name remains an external reference, and SqlScriptGen never rewrites identifier casing. JSON property-name matching remains case-insensitive and is separate from SQL identifier values.
 
-Foreign-key `onDelete` and `onUpdate` values are optional and may be null. Non-null values must be one of the documented strings `noAction`, `restrict`, `cascade`, `setNull`, or `setDefault`; numeric enum values and other JSON token kinds are invalid.
+Foreign-key `onDelete` and `onUpdate` values are optional and may be null. Non-null values are case-sensitive and must exactly match `noAction`, `restrict`, `cascade`, `setNull`, or `setDefault`; numeric enum values, differently cased or whitespace-modified strings, and other JSON token kinds are invalid.
 
 Dependencies are ordered with a stable topological sort: prerequisites precede dependents, while declaration order breaks ties between otherwise available objects. Missing explicit dependencies, self-dependencies, and cycles are validation errors. Input collections are never mutated.
 

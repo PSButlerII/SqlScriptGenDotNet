@@ -225,11 +225,11 @@ public static class SqlDefinitionDocumentJson
             if (reader.TokenType != JsonTokenType.String) throw new JsonException("A referential action must be a string.");
             return reader.GetString() switch
             {
-                string value when value.Equals("noAction", StringComparison.OrdinalIgnoreCase) => ReferentialAction.NoAction,
-                string value when value.Equals("restrict", StringComparison.OrdinalIgnoreCase) => ReferentialAction.Restrict,
-                string value when value.Equals("cascade", StringComparison.OrdinalIgnoreCase) => ReferentialAction.Cascade,
-                string value when value.Equals("setNull", StringComparison.OrdinalIgnoreCase) => ReferentialAction.SetNull,
-                string value when value.Equals("setDefault", StringComparison.OrdinalIgnoreCase) => ReferentialAction.SetDefault,
+                "noAction" => ReferentialAction.NoAction,
+                "restrict" => ReferentialAction.Restrict,
+                "cascade" => ReferentialAction.Cascade,
+                "setNull" => ReferentialAction.SetNull,
+                "setDefault" => ReferentialAction.SetDefault,
                 _ => throw new JsonException("The referential action is not supported.")
             };
         }

@@ -16,10 +16,16 @@ public sealed class DocumentSerializationTests
     public void NonStringCanonicalReferentialAction_IsRejected(string value) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ActionDocument($"\"onDelete\":{value}"))); Assert.Contains("objects[0].constraints[0].onDelete", ex.Path ?? ex.Message); }
     [Fact] public void NullAndOmittedCanonicalReferentialActions_AreAccepted() { var withNulls = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":null,\"onUpdate\":null"))); Assert.Null(withNulls.OnDelete); Assert.Null(withNulls.OnUpdate); var omitted = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument(null))); Assert.Null(omitted.OnDelete); Assert.Null(omitted.OnUpdate); }
     [Theory, InlineData("noAction", ReferentialAction.NoAction), InlineData("restrict", ReferentialAction.Restrict), InlineData("cascade", ReferentialAction.Cascade), InlineData("setNull", ReferentialAction.SetNull), InlineData("setDefault", ReferentialAction.SetDefault)]
-    public void CanonicalReferentialActionStrings_AreAccepted(string token, ReferentialAction expected) => Assert.Equal(expected, ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument($"\"onDelete\":\"{token}\""))).OnDelete);
+    public void CanonicalReferentialActionStrings_AreAcceptedExactly(string token, ReferentialAction expected) { var foreignKey = ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument($"\"onDelete\":\"{token}\",\"onUpdate\":\"{token}\""))); Assert.Equal(expected, foreignKey.OnDelete); Assert.Equal(expected, foreignKey.OnUpdate); }
+    [Theory, MemberData(nameof(InvalidCanonicalActionCasing))]
+    public void CanonicalReferentialActionCasing_IsRejectedByReaderAndPublicOptions(string property, string token) { var json = ActionDocument($"\"{property}\":\"{token}\""); Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(json, SqlDefinitionDocumentJson.Options)); }
     [Fact] public void UnknownCanonicalReferentialAction_IsRejected() => Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":\"deleteEverything\"")));
     [Fact] public void DirectCanonicalOptions_RejectNumericReferentialActions() => Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SqlDefinitionDocument>(ActionDocument("\"onDelete\":2"), SqlDefinitionDocumentJson.Options));
     [Fact] public void LegacyNumericReferentialActions_RemainAccepted() { const string json = "{\"Name\":\"child\",\"Columns\":[{\"Name\":\"id\",\"Type\":{\"Name\":\"int\"}}],\"Constraints\":[{\"kind\":\"foreignKey\",\"Name\":\"fk\",\"Columns\":[\"id\"],\"ReferencedTable\":\"parent\",\"ReferencedColumns\":[\"id\"],\"OnDelete\":2}]}"; var table = DefinitionJson.Deserialize(json); Assert.Equal(ReferentialAction.Cascade, Assert.IsType<ForeignKeyConstraint>(Assert.Single(table.Constraints!)).OnDelete); Assert.Equal(ReferentialAction.Cascade, Assert.IsType<ForeignKeyConstraint>(Assert.Single(JsonSerializer.Deserialize<TableDefinition>(json, DefinitionJson.Options)!.Constraints!)).OnDelete); }
+    [Fact] public void LegacyIncorrectlyCasedReferentialActions_RemainAccepted() { const string json = "{\"Name\":\"child\",\"Columns\":[{\"Name\":\"id\",\"Type\":{\"Name\":\"int\"}}],\"Constraints\":[{\"kind\":\"foreignKey\",\"Name\":\"fk\",\"Columns\":[\"id\"],\"ReferencedTable\":\"parent\",\"ReferencedColumns\":[\"id\"],\"OnDelete\":\"Cascade\",\"OnUpdate\":\"SETNULL\"}]}"; var foreignKey = Assert.IsType<ForeignKeyConstraint>(Assert.Single(DefinitionJson.Deserialize(json).Constraints!)); Assert.Equal(ReferentialAction.Cascade, foreignKey.OnDelete); Assert.Equal(ReferentialAction.SetNull, foreignKey.OnUpdate); }
+    [Fact] public void CanonicalActionPropertyNameRemainsCaseInsensitive() => Assert.Equal(ReferentialAction.Cascade, ForeignKey(SqlDefinitionDocumentJson.Read(ActionDocument("\"ONDELETE\":\"cascade\""))).OnDelete);
+    [Theory, InlineData("Table", "object"), InlineData("DATABASE", "object"), InlineData("PrimaryKey", "constraint"), InlineData("UNIQUE", "constraint"), InlineData("Check", "constraint"), InlineData("ForeignKey", "constraint"), InlineData("Table", "dependency"), InlineData("DATABASE", "dependency")]
+    public void OtherClosedCanonicalTokens_RejectIncorrectCasing(string token, string location) { var json = location switch { "object" => token.Equals("Table", StringComparison.Ordinal) ? $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"{token}\",\"name\":\"x\",\"columns\":[]}}]}}" : $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"{token}\",\"name\":\"x\"}}]}}", "constraint" => ConstraintDocument($"{{\"kind\":\"{token}\",\"name\":\"x\",\"columns\":[\"id\"]}}"), _ => DependencyDocument($"{{\"kind\":\"{token}\",\"name\":\"parent\"}}") }; Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); }
     [Fact]
     public void EveryCanonicalReferentialAction_SerializesWithExactToken()
     {
@@ -33,6 +39,7 @@ public sealed class DocumentSerializationTests
         });
         Assert.Equal(expected, actual);
     }
+    [Fact] public void CanonicalReferentialActions_RoundTripDeterministically() { var document = SqlDefinitionDocumentJson.Read(ActionDocument("\"onDelete\":\"cascade\",\"onUpdate\":\"setNull\"")); var canonical = SqlDefinitionDocumentJson.Serialize(document); Assert.Equal(canonical, SqlDefinitionDocumentJson.Serialize(SqlDefinitionDocumentJson.Read(canonical))); }
     [Theory, MemberData(nameof(InvalidNullStructures))] public void CanonicalNullStructure_IsJsonError(string json, string path) { var ex = Assert.Throws<JsonException>(() => SqlDefinitionDocumentJson.Read(json)); Assert.Contains(path, ex.Message); }
     [Fact] public void OptionalNullMembers_RemainAccepted() { const string json = "{\"formatVersion\":1,\"objects\":[{\"kind\":\"table\",\"name\":\"customers\",\"schema\":null,\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"},\"default\":null}],\"constraints\":null,\"dependsOn\":[]}]}"; var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read(json).Objects)); Assert.Null(table.Constraints); Assert.Null(table.Schema); }
     [Fact] public void TableKindAfterProperties_IsAccepted() { var table = Assert.IsType<TableDefinition>(Assert.Single(SqlDefinitionDocumentJson.Read("{\"formatVersion\":1,\"objects\":[{\"name\":\"customers\",\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}],\"kind\":\"table\"}]}").Objects)); Assert.Equal("customers", table.Name); Assert.Equal("id", Assert.Single(table.Columns).Name); }
@@ -96,6 +103,22 @@ public sealed class DocumentSerializationTests
         yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[null]"), "objects[0].dependsOn[0]"];
         yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":null,\"name\":\"parent\"}]"), "objects[0].dependsOn[0].kind"];
         yield return [CanonicalTable(ValidColumns + ",\"dependsOn\":[{\"kind\":\"table\",\"name\":null}]"), "objects[0].dependsOn[0].name"];
+    }
+    public static IEnumerable<object[]> InvalidCanonicalActionCasing()
+    {
+        yield return ["onDelete", "NoAction"];
+        yield return ["onUpdate", "NOACTION"];
+        yield return ["onDelete", "Restrict"];
+        yield return ["onDelete", "Cascade"];
+        yield return ["onUpdate", "CASCADE"];
+        yield return ["onDelete", "SetNull"];
+        yield return ["onUpdate", "setnull"];
+        yield return ["onUpdate", "SETNULL"];
+        yield return ["onDelete", "SetDefault"];
+        yield return ["onUpdate", "setdefault"];
+        yield return ["onDelete", "SETDEFAULT"];
+        yield return ["onDelete", " cascade"];
+        yield return ["onUpdate", "cascade "];
     }
     private const string ValidColumns = "\"columns\":[{\"name\":\"id\",\"type\":{\"name\":\"int\"}}]";
     private static string CanonicalTable(string members) => $"{{\"formatVersion\":1,\"objects\":[{{\"kind\":\"table\",\"name\":\"customers\",{members}}}]}}";
