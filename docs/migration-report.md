@@ -24,4 +24,8 @@ All identifiers are conservatively validated then always quoted for deterministi
 - CLI `Program.cs`: parsing, file I/O, orchestration, and iterative interaction.
 - Tests/examples/docs/CI: replace absent legacy quality and packaging infrastructure.
 
-Remaining limitations: raw SQL expressions are not parsed; one table per run; no indexes, alter statements, schema import, or live database verification.
+Remaining limitations: raw SQL expressions are not parsed; database and table objects cannot be mixed; there are no indexes, alter statements, schema import, or live database verification.
+
+## Version 1.1 foundation
+
+Version 1.1 adds a canonical, versioned multi-object envelope while preserving all valid 1.0 single-table files through a dedicated adapter. Both formats now share document validation, capability checks, stable dependency ordering, rendering, and CLI output. Only existing table and database SQL objects are supported. Database/table mixing is rejected because database creation requires a separate connection context. See `docs/json-format-v1.md` for migration details.
