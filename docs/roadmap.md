@@ -2,7 +2,7 @@
 
 This roadmap favors vertical, releasable increments. Every phase preserves PostgreSQL/MySQL isolation, deterministic reviewed output, tests, and documentation. The generator remains offline and never executes SQL.
 
-## Phase 0 — Planning and issue structure (current milestone)
+## Phase 0 — Planning and issue structure (completed foundation)
 
 - **Goal/value:** turn legacy ideas into an actionable dependency graph and reviewable backlog.
 - **Scope/deliverables:** audit, architecture review, ADR proposals, labels, roadmap milestone, tracking issue, and v1.1 issues.
@@ -12,7 +12,7 @@ This roadmap favors vertical, releasable increments. Every phase preserves Postg
 
 ## Phase 1 — Multi-object document foundation
 
-Implementation status: in progress for version 1.1.0; the implementation PR covers issues #1–#8 without adding later SQL syntax.
+Implementation status: released in version 1.1.0 on 2026-07-18.
 
 - **Goal/value:** generate a deterministic script containing several typed objects while keeping v1.0 files working.
 - **Scope/deliverables:** versioned envelope, common object identity, ordered objects/statements, dependency metadata and stable ordering, capability-aware renderer orchestration, CLI integration, fixtures, and migration guide.
@@ -22,10 +22,12 @@ Implementation status: in progress for version 1.1.0; the implementation PR cove
 
 ## Phase 2 — First-class schemas
 
+Planning status: current milestone for version 1.2.0.
+
 - **Goal/value:** declare namespaces and safely qualify later objects.
-- **Scope/deliverables:** reusable qualified names, PostgreSQL `CREATE SCHEMA` and optional ownership, schema references; explicit MySQL database/schema behavior.
-- **Non-goals/prerequisites:** no assumption that dialect semantics match; no schema import; requires Phase 1 identities/capabilities.
-- **Tests/docs/exit:** exact dialect outputs, unsupported-option and dependency tests, JSON examples; support matrix updated.
+- **Scope/deliverables:** first-class schema objects, PostgreSQL ownership, explicit MySQL schema/database semantics, schema/table document mixing, internal/external schema references, deterministic schema-before-table ordering, and canonical JSON Schema updates.
+- **Non-goals/prerequisites:** no assumption that dialect semantics match, no database/schema mixing, and no schema import; requires Phase 1 identities and capabilities.
+- **Tests/docs/exit:** exact dialect outputs, unsupported ownership and composition tests, internal/external ordering, legacy compatibility, JSON examples, migration guidance, and an updated support matrix.
 - **Version/dependencies:** **1.2.0**; Phase 1.
 
 ## Phase 3 — Indexes
